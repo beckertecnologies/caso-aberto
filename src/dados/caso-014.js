@@ -2,8 +2,12 @@
 //
 // Estrutura pensada para o gerador: o acervo tem vestígios que incriminam cada
 // suspeito. A cada investigação o jogo escolhe um culpado, planta os vestígios
-// dele, mistura algumas pistas falsas e espalha tudo em pontos diferentes.
+// dele, mistura algumas pistas falsas e espalha tudo entre os dois locais.
 // Resultado: mesma cena, mesmo crime, caminhos de dedução diferentes.
+//
+// Cada suspeito responde três perguntas. Uma resposta só cai quando o jogador
+// tem em mãos o vestígio que a desmente — é aí que a investigação deixa de ser
+// contagem de pistas e passa a ser pegar alguém mentindo.
 
 export const CASO_014 = {
   id: 'caso-014',
@@ -24,24 +28,147 @@ export const CASO_014 = {
       nome: 'Marcela Vidotti',
       relacao: 'ex-sócia da transportadora',
       alibi: 'Diz que passou a noite fechando o balanço no escritório, sozinha.',
+      perguntas: [
+        {
+          id: 'onde',
+          texto: 'Onde você estava na noite de ontem?',
+          resposta:
+            'No escritório, fechando o balanço. Sozinha, das oito até passar da meia-noite. ' +
+            'Ninguém me viu porque não havia mais ninguém lá.',
+          contradizPor: ['m3', 'm1'],
+          reacao:
+            'Ela para de encarar o senhor. "Liguei, sim. Uma vez. Ele não quis conversar por telefone, ' +
+            'então eu disse que resolveríamos naquela noite. Dito e feito, eu fui até lá."',
+        },
+        {
+          id: 'apartamento',
+          texto: 'Você entrou no apartamento 302 ontem?',
+          resposta: 'Não ponho os pés naquele apartamento desde que desfizemos a sociedade.',
+          contradizPor: ['m2'],
+          reacao:
+            '"Essa caneta pode ser de qualquer um", ela começa, e desiste no meio. ' +
+            '"Está certo. Eu estive lá. Mas quando saí ele estava de pé, discutindo comigo."',
+        },
+        {
+          id: 'relacao',
+          texto: 'Como era sua relação com Augusto?',
+          resposta:
+            'Péssima, e eu não vou fingir o contrário. Ele me tirou da empresa que eu ajudei a montar. ' +
+            'Isso não quer dizer que eu faria o que você está pensando.',
+          contradizPor: [],
+          reacao: '',
+        },
+      ],
     },
     {
       id: 'heitor',
       nome: 'Heitor Bastos',
       relacao: 'zelador do edifício',
       alibi: 'Afirma que estava na portaria e não subiu depois das 22h.',
+      perguntas: [
+        {
+          id: 'onde',
+          texto: 'Onde você estava na noite de ontem?',
+          resposta:
+            'Na portaria até as dez, como todo dia. Depois fui para casa, aqui mesmo, nos fundos. ' +
+            'Está tudo anotado na folha de ponto.',
+          contradizPor: ['h3'],
+          reacao:
+            'Ele olha a folha por um tempo longo. "Eu corrigi o horário porque errei na hora de anotar." ' +
+            'A voz não acompanha a explicação.',
+        },
+        {
+          id: 'apartamento',
+          texto: 'Você entrou no apartamento 302 ontem?',
+          resposta:
+            'Só entro com autorização, e ontem ninguém me chamou. Nem tenho chave daquele apartamento.',
+          contradizPor: ['h1', 'h2'],
+          reacao:
+            '"A chave era para o caso de emergência", ele diz. "Augusto já tinha ficado trancado para fora uma vez." ' +
+            'Ele não explica por que a cópia não foi registrada.',
+        },
+        {
+          id: 'relacao',
+          texto: 'Como era sua relação com Augusto?',
+          resposta:
+            'De respeito. Ele reclamava de tudo, mas pagava em dia. Para mim, isso basta.',
+          contradizPor: [],
+          reacao: '',
+        },
+      ],
     },
     {
       id: 'renata',
       nome: 'Renata Khoury',
       relacao: 'vizinha do 301',
       alibi: 'Conta que dormiu cedo e só acordou com a sirene.',
+      perguntas: [
+        {
+          id: 'onde',
+          texto: 'Onde você estava na noite de ontem?',
+          resposta:
+            'Em casa, no 301. Dormi cedo, umas nove e meia. Só acordei quando a sirene chegou, de manhã.',
+          contradizPor: ['r3'],
+          reacao:
+            '"Uma taça não prova nada." Ela acende um cigarro e não olha para o copo. ' +
+            '"Tomamos uma bebida, sim. Fui embora antes das onze."',
+        },
+        {
+          id: 'apartamento',
+          texto: 'Você entrou no apartamento 302 ontem?',
+          resposta: 'Nunca entrei ali. A gente se cumprimentava no corredor e era isso.',
+          contradizPor: ['r2'],
+          reacao:
+            'Ela encara a marca no piso. "Eu entrei para reclamar do barulho. Dois minutos, no máximo. ' +
+            'Ele estava vivo quando eu saí."',
+        },
+        {
+          id: 'relacao',
+          texto: 'Como era sua relação com Augusto?',
+          resposta: 'Cordial. Vizinhança normal, sem atrito.',
+          contradizPor: ['r1'],
+          reacao:
+            '"Sem atrito" é a parte que ela não consegue repetir depois de ler o próprio bilhete. ' +
+            '"Ele punha música alta até três da manhã. Qualquer um perderia a paciência."',
+        },
+      ],
     },
     {
       id: 'tiago',
       nome: 'Tiago Serra',
       relacao: 'irmão da vítima',
       alibi: 'Garante que estava em outra cidade e voltou de madrugada.',
+      perguntas: [
+        {
+          id: 'onde',
+          texto: 'Onde você estava na noite de ontem?',
+          resposta:
+            'Fora da cidade, resolvendo umas coisas. Só entrei de volta de madrugada, umas três da manhã.',
+          contradizPor: ['t3'],
+          reacao:
+            'Ele vira o cupom de pedágio na mão. "Então eu cheguei mais cedo do que lembrava. ' +
+            'Isso não me põe dentro do apartamento dele."',
+        },
+        {
+          id: 'apartamento',
+          texto: 'Você entrou no apartamento 302 ontem?',
+          resposta: 'Não. Faz umas duas semanas que não vou lá.',
+          contradizPor: ['t2'],
+          reacao:
+            'Ele reconhece o chaveiro antes de o senhor terminar a frase. "Deve ter caído outro dia." ' +
+            'Em seguida corrige: "Ontem. Caiu ontem."',
+        },
+        {
+          id: 'relacao',
+          texto: 'Como era sua relação com Augusto?',
+          resposta:
+            'Éramos irmãos. Brigávamos como irmãos. Dinheiro nunca foi assunto entre a gente.',
+          contradizPor: ['t1'],
+          reacao:
+            'A apólice fica entre os dois na mesa. "Ele quis fazer. Disse que era para me deixar tranquilo." ' +
+            'Ele não explica a assinatura tremida.',
+        },
+      ],
     },
   ],
 
@@ -188,10 +315,13 @@ export const CASO_014 = {
     },
   ],
 
-  // Documentos fixos, sempre no mesmo lugar do mapa.
+  // Documentos fixos. `cena` diz onde ficam; `alvo` diz a qual objeto pertencem.
+  // As pastas de um local recebem, em ordem, os documentos daquele local.
   documentos: [
     {
       id: 'corpo',
+      cena: 'apto-302',
+      alvo: 'corpo',
       titulo: 'Marcação da vítima',
       cabecalho: 'Observação direta — posição do corpo',
       texto:
@@ -201,6 +331,8 @@ export const CASO_014 = {
     },
     {
       id: 'boletim',
+      cena: 'apto-302',
+      alvo: 'pasta',
       titulo: 'Boletim de ocorrência',
       cabecalho: 'Delegacia do 4º Distrito — registro 014/2026',
       texto:
@@ -212,6 +344,8 @@ export const CASO_014 = {
     },
     {
       id: 'laudo',
+      cena: 'apto-302',
+      alvo: 'pasta',
       titulo: 'Laudo preliminar',
       cabecalho: 'Instituto de perícia — resumo não conclusivo',
       texto:
@@ -220,6 +354,30 @@ export const CASO_014 = {
         'A hipótese de ingestão involuntária, diluída em bebida, segue aberta.\n\n' +
         'Foram colhidas digitais em quatro superfícies. O cruzamento com os suspeitos ainda não saiu, ' +
         'o que mantém a investigação dependente do que for recolhido na cena.',
+    },
+    {
+      id: 'contrato',
+      cena: 'escritorio',
+      alvo: 'pasta',
+      titulo: 'Distrato da sociedade',
+      cabecalho: 'Transportadora Vilar — documentação societária',
+      texto:
+        'O distrato que tirou Marcela Vidotti do quadro societário é de quatro meses atrás.\n\n' +
+        'Consta uma cláusula de pagamento em três parcelas, das quais apenas a primeira foi quitada. ' +
+        'A segunda venceu há seis semanas.\n\n' +
+        'Há uma anotação a lápis na margem, com a letra da vítima: "não pago o resto".',
+    },
+    {
+      id: 'extrato',
+      cena: 'escritorio',
+      alvo: 'pasta',
+      titulo: 'Movimentação da empresa',
+      cabecalho: 'Transportadora Vilar — extrato dos últimos noventa dias',
+      texto:
+        'A empresa operava no limite. Três retiradas altas saíram da conta nas últimas semanas, ' +
+        'todas em dinheiro e sem contrapartida registrada.\n\n' +
+        'A última, de R$ 48.000, tem a data de ontem.\n\n' +
+        'O contador anotou ao lado que pediu explicação à vítima duas vezes e não obteve resposta.',
     },
   ],
 

@@ -42,7 +42,8 @@ export class Renderizador {
    */
   desenhar(jogo, tileSobMouse, alvoDestacado, tempo) {
     const ctx = this.ctx;
-    const { cena, detetive } = jogo;
+    const cena = jogo.cenaAtual;
+    const detetive = jogo.detetive;
 
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.largura, this.altura);

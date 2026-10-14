@@ -1,17 +1,18 @@
 // Monta uma investigação a partir de uma semente.
 //
-// O mapa é fixo; o que muda é o mistério: quem é o culpado, quais vestígios
-// existem na cena e em que canto cada um aparece. É o equivalente, aqui, à
-// dungeon gerada de um ARPG — só que o que se gera é a dedução, não a geometria.
+// Os mapas são fixos; o que muda é o mistério: quem é o culpado, quais vestígios
+// existem, em que local cada um aparece e, por consequência, quais mentiras o
+// jogador consegue derrubar. É o equivalente, aqui, à dungeon gerada de um ARPG —
+// só que o que se gera é a dedução, não a geometria.
 
 import { criarRng } from '../core/rng.js';
 
 /**
  * @param {object} caso definição em src/dados
- * @param {{gx:number,gy:number}[]} pontos pontos de vestígio da cena
+ * @param {{id:string,pontos:{gx:number,gy:number}[]}[]} cenas locais disponíveis
  * @param {string|number} semente
  */
-export function montarMisterio(caso, pontos, semente) {
+export function montarMisterio(caso, cenas, semente) {
   const rng = criarRng(semente);
   const { incriminam, pistasFalsas, contexto } = caso.composicao;
 
@@ -20,29 +21,23 @@ export function montarMisterio(caso, pontos, semente) {
   const doCulpado = caso.acervo.filter((v) => v.aponta === culpado.id);
   const dosOutros = caso.acervo.filter((v) => v.aponta && v.aponta !== culpado.id);
 
-  const escolhidosIncriminam = rng.amostrar(doCulpado, incriminam);
-  const escolhidosFalsos = distribuirFalsas(rng, dosOutros, pistasFalsas, culpado.id);
-  const escolhidosContexto = rng.amostrar(caso.contexto, contexto);
-
   const selecionados = rng.embaralhar([
-    ...escolhidosIncriminam,
-    ...escolhidosFalsos,
-    ...escolhidosContexto,
+    ...rng.amostrar(doCulpado, incriminam),
+    ...distribuirFalsas(rng, dosOutros, pistasFalsas, culpado.id),
+    ...rng.amostrar(caso.contexto, contexto),
   ]);
 
-  const locais = rng.embaralhar(pontos);
-  if (locais.length < selecionados.length) {
-    throw new Error(
-      `A cena tem ${locais.length} pontos de vestígio, mas o caso precisa de ${selecionados.length}.`,
-    );
-  }
+  const locais = sortearLocais(rng, cenas, selecionados.length);
 
   const vestigios = selecionados.map((def, i) => ({
     ...def,
+    cena: locais[i].cena,
     gx: locais[i].gx,
     gy: locais[i].gy,
     recolhido: false,
   }));
+
+  const plantados = new Set(vestigios.map((v) => v.id));
 
   return {
     semente: String(semente),
@@ -50,7 +45,56 @@ export function montarMisterio(caso, pontos, semente) {
     culpado,
     vestigios,
     total: vestigios.length,
+    // Quantas respostas do culpado podem ser derrubadas nesta investigação.
+    contradicoesPossiveis: perguntasContraditaveis(culpado, plantados).length,
   };
+}
+
+/**
+ * Sorteia `quantidade` pontos espalhados entre os locais, equilibrando a carga.
+ * Sem isso um local poderia ficar vazio e a viagem perderia sentido.
+ */
+function sortearLocais(rng, cenas, quantidade) {
+  if (!cenas.length) throw new Error('É preciso pelo menos um local para plantar vestígios.');
+
+  const capacidade = cenas.reduce((soma, cena) => soma + cena.pontos.length, 0);
+  if (capacidade < quantidade) {
+    throw new Error(`Os locais oferecem ${capacidade} pontos, mas o caso precisa de ${quantidade}.`);
+  }
+
+  // Cota base igual para todos; o resto vai para locais sorteados.
+  const cotas = new Map(cenas.map((cena) => [cena.id, Math.floor(quantidade / cenas.length)]));
+  let sobra = quantidade - [...cotas.values()].reduce((a, b) => a + b, 0);
+  for (const cena of rng.embaralhar(cenas)) {
+    if (sobra <= 0) break;
+    cotas.set(cena.id, cotas.get(cena.id) + 1);
+    sobra -= 1;
+  }
+
+  // Um local pequeno pode não dar conta da cota; o excedente volta para os outros.
+  const escolhidos = [];
+  let pendente = 0;
+  for (const cena of cenas) {
+    const cota = Math.min(cotas.get(cena.id), cena.pontos.length);
+    pendente += cotas.get(cena.id) - cota;
+    for (const ponto of rng.amostrar(cena.pontos, cota)) {
+      escolhidos.push({ cena: cena.id, gx: ponto.gx, gy: ponto.gy });
+    }
+  }
+
+  if (pendente > 0) {
+    const usados = new Set(escolhidos.map((p) => `${p.cena}:${p.gx},${p.gy}`));
+    const livres = [];
+    for (const cena of cenas) {
+      for (const ponto of cena.pontos) {
+        const chave = `${cena.id}:${ponto.gx},${ponto.gy}`;
+        if (!usados.has(chave)) livres.push({ cena: cena.id, gx: ponto.gx, gy: ponto.gy });
+      }
+    }
+    escolhidos.push(...rng.amostrar(livres, pendente));
+  }
+
+  return rng.embaralhar(escolhidos);
 }
 
 /**
@@ -86,6 +130,23 @@ function distribuirFalsas(rng, candidatos, quantidade, idCulpado) {
   return escolhidos;
 }
 
+/** Perguntas de um suspeito que algum vestígio plantado é capaz de desmentir. */
+export function perguntasContraditaveis(suspeito, idsPlantados) {
+  return (suspeito.perguntas ?? []).filter((pergunta) =>
+    (pergunta.contradizPor ?? []).some((id) => idsPlantados.has(id)),
+  );
+}
+
+/**
+ * Vestígios já recolhidos capazes de derrubar uma resposta específica.
+ * @param {object} pergunta
+ * @param {object[]} recolhidos
+ */
+export function vestigiosQueDerrubam(pergunta, recolhidos) {
+  const alvos = new Set(pergunta.contradizPor ?? []);
+  return recolhidos.filter((vestigio) => alvos.has(vestigio.id));
+}
+
 /**
  * Pesa as evidências já recolhidas por suspeito. Alimenta o painel de suspeitos
  * e serve de base para o desfecho.
@@ -104,18 +165,26 @@ export function pesarEvidencias(misterio, recolhidos) {
 }
 
 /**
- * Julga a acusação. O acerto depende de nomear o culpado certo;
- * a qualidade do fechamento depende de quantas provas dele estavam em mãos.
+ * Julga a acusação. O acerto depende de nomear o culpado certo; a qualidade do
+ * fechamento depende das provas em mãos e das mentiras derrubadas.
+ * @param {object[]} contradicoes registros {suspeito, pergunta, vestigio}
  */
-export function julgar(misterio, idAcusado, recolhidos) {
+export function julgar(misterio, idAcusado, recolhidos, contradicoes = []) {
   const acertou = idAcusado === misterio.culpado.id;
   const provasDoCulpado = recolhidos.filter((v) => v.aponta === misterio.culpado.id);
   const totalDoCulpado = misterio.vestigios.filter((v) => v.aponta === misterio.culpado.id).length;
   const acusado = misterio.caso.suspeitos.find((s) => s.id === idAcusado) ?? null;
 
+  const quebrasDoCulpado = contradicoes.filter((c) => c.suspeito === misterio.culpado.id);
+  const possiveis = misterio.contradicoesPossiveis;
+
   let forca = 'fraca';
-  if (provasDoCulpado.length >= totalDoCulpado && totalDoCulpado > 0) forca = 'completa';
-  else if (provasDoCulpado.length >= Math.ceil(totalDoCulpado / 2)) forca = 'parcial';
+  const todasAsProvas = totalDoCulpado > 0 && provasDoCulpado.length >= totalDoCulpado;
+  const todasAsQuebras = possiveis > 0 ? quebrasDoCulpado.length >= possiveis : true;
+  if (todasAsProvas && todasAsQuebras) forca = 'completa';
+  else if (provasDoCulpado.length >= Math.ceil(totalDoCulpado / 2) || quebrasDoCulpado.length > 0) {
+    forca = 'parcial';
+  }
 
   return {
     acertou,
@@ -123,6 +192,8 @@ export function julgar(misterio, idAcusado, recolhidos) {
     culpado: misterio.culpado,
     provasDoCulpado,
     totalDoCulpado,
+    quebrasDoCulpado,
+    contradicoesPossiveis: possiveis,
     forca,
     recolhidos: recolhidos.length,
     total: misterio.total,

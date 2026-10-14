@@ -1,4 +1,4 @@
-// Ponto de entrada: liga canvas, entrada, jogo e interface.
+// Ponto de entrada: liga canvas, entrada, jogo, progresso salvo e interface.
 
 import { Camera } from './core/camera.js';
 import { Entrada } from './core/entrada.js';
@@ -8,13 +8,19 @@ import { sementeAleatoria } from './core/rng.js';
 import { Renderizador } from './render/renderizador.js';
 import { Interface } from './ui/interface.js';
 import { Jogo } from './jogo/jogo.js';
+import { Progresso } from './jogo/persistencia.js';
 import { CENA_APTO_302 } from './dados/cena-apto302.js';
+import { CENA_ESCRITORIO } from './dados/cena-escritorio.js';
 import { CASO_014 } from './dados/caso-014.js';
+
+/** Locais da investigação, na ordem em que aparecem. */
+const CENAS = [CENA_APTO_302, CENA_ESCRITORIO];
 
 const canvas = document.getElementById('palco');
 const camera = new Camera();
 const renderizador = new Renderizador(canvas, camera);
 const entrada = new Entrada(canvas);
+const progresso = new Progresso();
 
 /** @type {Jogo} */
 let jogo;
@@ -25,7 +31,10 @@ let bloqueadoNoQuadroAnterior = false;
 
 const ui = new Interface({
   aoAcusar: (idSuspeito) => jogo.acusar(idSuspeito),
-  aoNovaInvestigacao: () => iniciar(sementeAleatoria()),
+  aoNovaInvestigacao: () => {
+    progresso.limpar();
+    iniciar(sementeAleatoria());
+  },
 });
 
 /** Lê a semente da URL, para repetir uma investigação específica. */
@@ -40,29 +49,54 @@ function gravarSementeNaUrl(semente) {
   history.replaceState(null, '', `#${hash.toString()}`);
 }
 
-function iniciar(semente) {
-  jogo = new Jogo(CENA_APTO_302, CASO_014, semente);
+function posicaoDaCamera() {
+  const ponto = gradeParaMundo(jogo.detetive.gx, jogo.detetive.gy);
+  // Sobe um pouco o enquadramento: o detetive é desenhado acima do centro do tile.
+  return { x: ponto.x, y: ponto.y - 24 };
+}
+
+function enquadrarAgora() {
+  const foco = posicaoDaCamera();
+  camera.fixar(foco.x, foco.y);
+}
+
+/**
+ * Monta uma investigação. Quando `estadoSalvo` casa com a semente, retoma de
+ * onde o jogador parou em vez de começar do zero.
+ */
+function iniciar(semente, estadoSalvo = null) {
+  jogo = new Jogo(CENAS, CASO_014, semente);
+
+  const retomado = estadoSalvo ? jogo.restaurar(estadoSalvo) : false;
+
   gravarSementeNaUrl(jogo.semente);
   ui.conectarJogo(jogo);
 
-  // Enquadra o detetive de imediato, sem deslizar da origem até ele.
-  const foco = posicaoDaCamera();
-  camera.fixar(foco.x, foco.y);
+  // Grava o progresso a cada avanço real da investigação.
+  for (const evento of ['vestigio', 'documento', 'contradicao', 'depoimento', 'viagem', 'veredito']) {
+    jogo.escutar(evento, () => progresso.salvar(jogo));
+  }
+  jogo.escutar('viagem', () => enquadrarAgora());
 
+  enquadrarAgora();
   tileSobMouse = null;
   alvoDestacado = null;
   bloqueadoNoQuadroAnterior = false;
-  ui.aviso(
-    jogo.caso.titulo,
-    `${jogo.caso.resumo} Há ${jogo.misterio.total} vestígios nesta cena. Procure a marcação da vítima e as pastas da perícia.`,
-  );
-}
 
-function posicaoDaCamera() {
-  const { gx, gy } = jogo.detetive;
-  const ponto = gradeParaMundo(gx, gy);
-  // Sobe um pouco o enquadramento: o detetive é desenhado acima do centro do tile.
-  return { x: ponto.x, y: ponto.y - 24 };
+  if (retomado) {
+    ui.aviso(
+      'Investigação retomada',
+      `Você estava em ${jogo.cenaAtual.nome}, com ${jogo.recolhidos.length} de ${jogo.misterio.total} vestígios recolhidos. ` +
+        'Para começar um caso novo, use "Nova investigação".',
+    );
+  } else {
+    progresso.salvar(jogo);
+    ui.aviso(
+      jogo.caso.titulo,
+      `${jogo.caso.resumo} Há ${jogo.misterio.total} vestígios espalhados entre os locais da investigação. ` +
+        'Procure a marcação da vítima e as pastas da perícia, e confronte os depoimentos com o que achar.',
+    );
+  }
 }
 
 /** Converte a posição do ponteiro no tile correspondente da grade. */
@@ -71,7 +105,7 @@ function tileDoPonteiro() {
   const mundo = camera.telaParaMundo(entrada.ponteiro.x, entrada.ponteiro.y);
   const { gx, gy } = mundoParaGrade(mundo.x, mundo.y);
   const tile = { gx: Math.round(gx), gy: Math.round(gy) };
-  return jogo.cena.dentro(tile.gx, tile.gy) ? tile : null;
+  return jogo.cenaAtual.dentro(tile.gx, tile.gy) ? tile : null;
 }
 
 function tratarCliques() {
@@ -119,15 +153,36 @@ function quadro(dt, tempo) {
 
 entrada.aoAtalho('KeyC', () => ui.alternarPainel('caderno'));
 entrada.aoAtalho('KeyF', () => ui.alternarPainel('suspeitos'));
+entrada.aoAtalho('KeyL', () => ui.abrirDeslocamento());
 entrada.aoAtalho('KeyG', () => ui.abrirAcusacao());
-entrada.aoAtalho('KeyN', () => iniciar(sementeAleatoria()));
+entrada.aoAtalho('KeyN', () => {
+  progresso.limpar();
+  iniciar(sementeAleatoria());
+});
 
 window.addEventListener('resize', () => renderizador.redimensionar());
+
+// Guarda a posição ao sair: os eventos de jogo não cobrem a caminhada em si.
+window.addEventListener('pagehide', () => progresso.salvar(jogo));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') progresso.salvar(jogo);
+});
 
 // ---------- partida ----------
 
 try {
-  iniciar(sementeDaUrl() ?? sementeAleatoria());
+  const salvo = progresso.carregar();
+  const daUrl = sementeDaUrl();
+
+  // A semente da URL manda. Só retomamos o salvo quando é a mesma investigação.
+  if (daUrl) {
+    iniciar(daUrl, salvo?.semente === daUrl ? salvo : null);
+  } else if (salvo) {
+    iniciar(salvo.semente, salvo);
+  } else {
+    iniciar(sementeAleatoria());
+  }
+
   new Loop(quadro).iniciar();
 } catch (erro) {
   console.error(erro);

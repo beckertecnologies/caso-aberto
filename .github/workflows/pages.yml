@@ -1,0 +1,61 @@
+# Publica o site no GitHub Pages como arquivos estáticos.
+#
+# O build padrão do Pages passa tudo pelo Jekyll, que este projeto não usa:
+# são só HTML, CSS e módulos ES. Além de desnecessário, aquele caminho depende
+# de baixar uma imagem de container e já travou por vários minutos nesse passo.
+# Aqui o conteúdo é enviado como está.
+
+name: Publicar no Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Uma publicação por vez; se vier push novo, a fila não acumula.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Verificar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Rodar as checagens
+        run: npm run check
+
+  publicar:
+    name: Publicar
+    needs: verificar
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar a pasta do site
+        # Só o que o navegador precisa. Fora: git, workflows, ferramentas de teste.
+        run: |
+          mkdir -p site
+          cp index.html styles.css site/
+          cp -r src site/
+          cp README.md LICENSE site/
+          touch site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

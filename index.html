@@ -24,12 +24,17 @@
         <strong id="hud-pistas">0/0</strong>
       </div>
       <div class="medidor">
+        <span class="medidor__rotulo">Mentiras</span>
+        <strong id="hud-contradicoes" title="Respostas derrubadas por um vestígio">0</strong>
+      </div>
+      <div class="medidor">
         <span class="medidor__rotulo">Semente</span>
         <strong id="hud-semente" title="Identificador desta investigação">—</strong>
       </div>
     </div>
     <nav class="hud__acoes" aria-label="Ações">
       <button type="button" id="btn-caderno" class="botao" aria-expanded="false">Caderno <kbd>C</kbd></button>
+      <button type="button" id="btn-locais" class="botao">Locais <kbd>L</kbd></button>
       <button type="button" id="btn-suspeitos" class="botao" aria-expanded="false">Suspeitos <kbd>F</kbd></button>
       <button type="button" id="btn-acusar" class="botao botao--destaque">Acusar <kbd>G</kbd></button>
       <button type="button" id="btn-nova" class="botao botao--discreto">Nova investigação <kbd>N</kbd></button>
@@ -39,7 +44,7 @@
   <!-- Dica de contexto no rodapé -->
   <footer id="rodape" class="rodape">
     <p id="dica-alvo" class="rodape__alvo" aria-live="polite"></p>
-    <p class="rodape__ajuda">Clique para caminhar. Clique num objeto destacado para examinar. Setas ou WASD também movem.</p>
+    <p class="rodape__ajuda">Clique para caminhar. Clique num objeto destacado para examinar. Setas ou WASD também movem. A placa verde leva a outro local.</p>
   </footer>
 
   <!-- Avisos temporários -->

@@ -365,6 +365,95 @@ html, body {
   color: var(--tinta-fraca);
 }
 
+.suspeito__quebra {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #e4909a;
+}
+
+.suspeito__rodape { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+/* ---------- Interrogatório ---------- */
+
+.pergunta {
+  margin: 0 0 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--borda);
+  border-radius: 3px;
+  background: var(--fundo-painel);
+}
+
+.pergunta--caiu { border-left: 3px solid var(--sangue); }
+
+.pergunta__fazer {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ambar-claro);
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pergunta__fazer::before { content: '› '; }
+.pergunta__fazer:hover { color: #ffe2ad; text-decoration: underline; }
+
+.pergunta__texto {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--ambar);
+}
+
+.pergunta__resposta {
+  margin: 0;
+  font-family: var(--fonte-titulo);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.pergunta__quebra {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--borda);
+}
+
+.pergunta__etiqueta {
+  margin: 0 0 6px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: #e4909a;
+}
+
+.pergunta__reacao {
+  margin: 0;
+  font-family: var(--fonte-titulo);
+  font-size: 0.84rem;
+  line-height: 1.6;
+  color: var(--tinta);
+}
+
+.pergunta__nota { margin: 9px 0 0; font-size: 0.74rem; color: var(--tinta-fraca); font-style: italic; }
+
+.pergunta__confrontos { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+
+.modal__intro { margin: 0 0 14px; font-size: 0.8rem; color: var(--tinta-fraca); }
+
+/* ---------- Locais ---------- */
+
+.local__pendentes {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--ambar);
+}
+
 /* ---------- Modal ---------- */
 
 .modal {
