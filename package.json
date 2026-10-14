@@ -1,0 +1,15 @@
+{
+  "name": "caso-aberto",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Protótipo de jogo de investigação em vista isométrica: um detetive percorre a cena do crime, coleta vestígios e nomeia um culpado. O mistério é montado a partir de uma semente, então a mesma cena rende investigações diferentes.",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node tools/verificar.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

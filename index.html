@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caso Aberto — protótipo de investigação</title>
+<meta name="description" content="Protótipo de jogo de investigação em vista isométrica: percorra a cena do crime, recolha vestígios e nomeie um culpado.">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<main id="app">
+  <canvas id="palco" aria-label="Cena do crime em vista isométrica" role="img"></canvas>
+
+  <!-- Barra superior -->
+  <header id="hud" class="hud">
+    <div class="hud__caso">
+      <h1 id="hud-titulo">Caso</h1>
+      <p id="hud-local" class="hud__local"></p>
+    </div>
+    <div class="hud__medidores">
+      <div class="medidor">
+        <span class="medidor__rotulo">Vestígios</span>
+        <strong id="hud-pistas">0/0</strong>
+      </div>
+      <div class="medidor">
+        <span class="medidor__rotulo">Semente</span>
+        <strong id="hud-semente" title="Identificador desta investigação">—</strong>
+      </div>
+    </div>
+    <nav class="hud__acoes" aria-label="Ações">
+      <button type="button" id="btn-caderno" class="botao" aria-expanded="false">Caderno <kbd>C</kbd></button>
+      <button type="button" id="btn-suspeitos" class="botao" aria-expanded="false">Suspeitos <kbd>F</kbd></button>
+      <button type="button" id="btn-acusar" class="botao botao--destaque">Acusar <kbd>G</kbd></button>
+      <button type="button" id="btn-nova" class="botao botao--discreto">Nova investigação <kbd>N</kbd></button>
+    </nav>
+  </header>
+
+  <!-- Dica de contexto no rodapé -->
+  <footer id="rodape" class="rodape">
+    <p id="dica-alvo" class="rodape__alvo" aria-live="polite"></p>
+    <p class="rodape__ajuda">Clique para caminhar. Clique num objeto destacado para examinar. Setas ou WASD também movem.</p>
+  </footer>
+
+  <!-- Avisos temporários -->
+  <div id="avisos" class="avisos" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- Caderno de evidências -->
+  <aside id="caderno" class="painel painel--esquerda" hidden aria-labelledby="caderno-titulo">
+    <div class="painel__topo">
+      <h2 id="caderno-titulo">Caderno de evidências</h2>
+      <button type="button" class="painel__fechar" data-fechar="caderno" aria-label="Fechar caderno">×</button>
+    </div>
+    <div id="caderno-corpo" class="painel__corpo"></div>
+  </aside>
+
+  <!-- Ficha de suspeitos -->
+  <aside id="suspeitos" class="painel painel--direita" hidden aria-labelledby="suspeitos-titulo">
+    <div class="painel__topo">
+      <h2 id="suspeitos-titulo">Suspeitos</h2>
+      <button type="button" class="painel__fechar" data-fechar="suspeitos" aria-label="Fechar suspeitos">×</button>
+    </div>
+    <div id="suspeitos-corpo" class="painel__corpo"></div>
+  </aside>
+
+  <!-- Caixa de leitura / acusação / desfecho -->
+  <div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+    <div class="modal__caixa" id="modal-caixa">
+      <div class="painel__topo">
+        <h2 id="modal-titulo"></h2>
+        <button type="button" class="painel__fechar" data-fechar="modal" aria-label="Fechar">×</button>
+      </div>
+      <div id="modal-corpo" class="painel__corpo"></div>
+      <div id="modal-acoes" class="modal__acoes"></div>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
