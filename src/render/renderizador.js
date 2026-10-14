@@ -143,7 +143,8 @@ export class Renderizador {
   // ---------- peças, vestígios e detetive ----------
 
   #desenharPecasEEntidades(jogo, alvoDestacado, tempo) {
-    const { cena, detetive } = jogo;
+    const cena = jogo.cenaAtual;
+    const detetive = jogo.detetive;
     const fila = [];
 
     for (const peca of cena.pecas) {
@@ -185,6 +186,9 @@ export class Renderizador {
       case 'planta':
         this.#planta(x, y);
         break;
+      case 'arvore':
+        this.#arvore(x, y, gx + gy);
+        break;
       case 'luminaria':
         this.#luminaria(x, y, tempo);
         break;
@@ -194,14 +198,18 @@ export class Renderizador {
       case 'pasta':
         this.#pasta(x, y, destacada, tempo);
         break;
-      case 'saida':
-        this.#saida(x, y, tempo);
+      case 'jornal':
+        this.#jornal(x, y, destacada, tempo);
+        break;
+      case 'passagem':
+        this.#passagem(x, y, destacada, tempo);
         break;
       default:
         break;
     }
 
-    if (destacada && def.forma && def.forma !== 'contorno' && def.forma !== 'pasta') {
+    const proprias = ['contorno', 'pasta', 'jornal', 'passagem'];
+    if (destacada && def.forma && !proprias.includes(def.forma)) {
       this.#aroDestaque(x, y, tempo);
     }
   }
@@ -350,23 +358,105 @@ export class Renderizador {
     if (destacada) this.#aroDestaque(x, y, tempo);
   }
 
-  #saida(x, y, tempo) {
+  /** Árvore de rua: tronco e copa em camadas, com leve variação por posição. */
+  #arvore(x, y, semente) {
     const ctx = this.ctx;
-    const pulso = 0.35 + Math.sin(tempo * 2.4) * 0.12;
-    trilhaDiamante(ctx, x, y, 0.85);
-    ctx.fillStyle = `rgba(95, 158, 114, ${pulso})`;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(143, 196, 159, 0.8)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    this.#sombra(x, y, 0.62);
     ctx.save();
-    ctx.translate(x, y - 14);
-    ctx.strokeStyle = 'rgba(143, 196, 159, 0.9)';
-    ctx.lineWidth = 2;
+    ctx.translate(x, y);
+    ctx.strokeStyle = '#2a2017';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(-6, 4);
-    ctx.lineTo(0, -4);
-    ctx.lineTo(6, 4);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -26);
+    ctx.stroke();
+
+    const desvio = ((semente * 37) % 7) - 3;
+    const copas = [
+      { dx: 0, dy: -46, rx: 19, ry: 13, cor: '#1d2e22' },
+      { dx: desvio, dy: -54, rx: 15, ry: 11, cor: '#253a2a' },
+      { dx: -desvio, dy: -38, rx: 16, ry: 10, cor: '#203325' },
+    ];
+    for (const copa of copas) {
+      ctx.fillStyle = copa.cor;
+      ctx.beginPath();
+      ctx.ellipse(copa.dx, copa.dy, copa.rx, copa.ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Banca de jornal: caixa baixa com a folha aberta em cima. */
+  #jornal(x, y, destacada, tempo) {
+    const ctx = this.ctx;
+    this.#sombra(x, y, 0.62);
+    this.#bloco(x, y, 20, '#2f3540', '#242932', '#1c2028', 0.68);
+    ctx.save();
+    ctx.translate(x, y - 20);
+    ctx.fillStyle = destacada ? '#efe6d2' : '#cdc4b2';
+    ctx.beginPath();
+    ctx.moveTo(-13, 0);
+    ctx.lineTo(0, -6);
+    ctx.lineTo(13, 0);
+    ctx.lineTo(0, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(60, 54, 42, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-6, 0);
+    ctx.lineTo(6, 0);
+    ctx.stroke();
+    ctx.restore();
+    if (destacada) this.#aroDestaque(x, y, tempo);
+  }
+
+  /** Passagem entre locais: vão iluminado na fachada, com seta de entrada. */
+  #passagem(x, y, destacada, tempo) {
+    const ctx = this.ctx;
+    const pulso = 0.4 + Math.sin(tempo * 2.2) * 0.12;
+
+    // Luz derramando do vão no chão
+    const brilho = ctx.createRadialGradient(x, y, 2, x, y, 44);
+    brilho.addColorStop(0, `rgba(240, 200, 126, ${0.36 * pulso + 0.14})`);
+    brilho.addColorStop(1, 'rgba(240, 200, 126, 0)');
+    ctx.fillStyle = brilho;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 44, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    trilhaDiamante(ctx, x, y, 0.9);
+    ctx.fillStyle = `rgba(240, 200, 126, ${0.2 + pulso * 0.14})`;
+    ctx.fill();
+    ctx.strokeStyle = destacada ? 'rgba(255, 228, 170, 0.95)' : 'rgba(216, 162, 74, 0.75)';
+    ctx.lineWidth = destacada ? 2.2 : 1.5;
+    ctx.stroke();
+
+    // Vão escuro recuado, dando a leitura de porta aberta
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#15110c';
+    ctx.beginPath();
+    ctx.moveTo(-13, -4);
+    ctx.lineTo(0, -10);
+    ctx.lineTo(13, -4);
+    ctx.lineTo(13, -34);
+    ctx.lineTo(0, -40);
+    ctx.lineTo(-13, -34);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(216, 162, 74, 0.5)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    // Seta indicando que ali se entra
+    ctx.strokeStyle = destacada ? '#ffe4aa' : 'rgba(240, 200, 126, 0.85)';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-5, -18);
+    ctx.lineTo(0, -24);
+    ctx.lineTo(5, -18);
     ctx.stroke();
     ctx.restore();
   }

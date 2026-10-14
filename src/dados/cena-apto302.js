@@ -11,14 +11,19 @@
 //   c  tapete        S  sofá          L  luminária
 //   p  calçada       T  mesa          O  marcação da vítima
 //                    V  estante       F  pasta da perícia
-//                    A  guarda-roupa  E  saída (encerra a investigação)
+//                    A  guarda-roupa  1  passagem para a rua (ver `ligacoes`)
 //                    B  cama          *  ponto onde um vestígio pode surgir
-//                    D  escrivaninha  X  onde o detetive começa
+//                    D  escrivaninha  X  onde o detetive chega
 
 export const CENA_APTO_302 = {
   id: 'apto-302',
   nome: 'Apartamento 302',
   endereco: 'Rua das Acácias, 302 — terceiro andar',
+
+  // A passagem "1" na calçada devolve o detetive para a rua.
+  ligacoes: {
+    1: { para: 'cidade', rotulo: 'Voltar para a rua' },
+  },
 
   chao: [
     '                          ',
@@ -66,7 +71,7 @@ export const CENA_APTO_302 = {
     '..#......*..#..*..#....#..',
     '..#.*.......#.....#.X..#..',
     '..##################d###..',
-    '....................E.....',
+    '....................1.....',
     '..........................',
   ],
 };

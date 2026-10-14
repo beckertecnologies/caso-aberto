@@ -8,7 +8,7 @@
 //   w  tábua         #  parede        P  vaso
 //   t  ladrilho      d  passagem      L  luminária
 //   c  tapete        T  mesa          F  pasta da perícia
-//   p  calçada       V  estante       E  saída (abre o deslocamento)
+//   p  calçada       V  estante       1  passagem para a rua (`ligacoes`)
 //                    A  armário       *  ponto onde um vestígio pode surgir
 //                    D  escrivaninha  X  onde o detetive chega
 
@@ -16,6 +16,11 @@ export const CENA_ESCRITORIO = {
   id: 'escritorio',
   nome: 'Transportadora Vilar',
   endereco: 'Avenida Sete de Abril, 1140 — sala comercial',
+
+  // A passagem "1" na calçada devolve o detetive para a rua.
+  ligacoes: {
+    1: { para: 'cidade', rotulo: 'Voltar para a rua' },
+  },
 
   chao: [
     '                          ',
@@ -59,7 +64,7 @@ export const CENA_ESCRITORIO = {
     '..#....F..............*#..',
     '..#P........X...*......#..',
     '..##########d###########..',
-    '............E.............',
+    '............1.............',
     '..........................',
   ],
 };

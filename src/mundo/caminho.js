@@ -96,16 +96,33 @@ function reconstruir(anterior, chave, fim) {
   return caminho;
 }
 
-/** Há linha livre entre dois pontos? Amostra o segmento em passos curtos. */
+/**
+ * Há linha livre entre dois pontos? Amostra o segmento em passos curtos.
+ *
+ * Quando a amostragem passa de um tile para outro na diagonal, exige os dois
+ * lados livres — a mesma regra que o A* aplica. Sem isso a suavização desfaz o
+ * cuidado da busca e o detetive atravessa o vão entre dois objetos encostados,
+ * como a quina de um prédio ao lado de um poste.
+ */
 export function linhaLivre(cena, ax, ay, bx, by) {
   const distancia = Math.hypot(bx - ax, by - ay);
-  const passos = Math.ceil(distancia / 0.25);
+  const passos = Math.max(1, Math.ceil(distancia / 0.2));
+
+  let px = Math.round(ax);
+  let py = Math.round(ay);
+  if (!cena.andavel(px, py)) return false;
+
   for (let i = 1; i <= passos; i += 1) {
     const t = i / passos;
     const x = Math.round(ax + (bx - ax) * t);
     const y = Math.round(ay + (by - ay) * t);
+    if (x === px && y === py) continue;
     if (!cena.andavel(x, y)) return false;
+    if (x !== px && y !== py && (!cena.andavel(x, py) || !cena.andavel(px, y))) return false;
+    px = x;
+    py = y;
   }
+
   return true;
 }
 

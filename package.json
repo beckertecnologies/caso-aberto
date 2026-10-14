@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node tools/verificar.mjs"
+    "check": "node tools/verificar.mjs && node tools/fumaca.mjs"
   },
   "engines": {
     "node": ">=20"

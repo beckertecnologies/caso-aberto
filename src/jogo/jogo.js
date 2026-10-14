@@ -108,7 +108,14 @@ export class Jogo {
     }
     const fixo = this.cenaAtual.examinavelEm(gx, gy);
     if (fixo) {
-      return { tipo: fixo.tipo, gx, gy, rotulo: fixo.def.rotulo, def: fixo.def };
+      return {
+        tipo: fixo.tipo,
+        gx,
+        gy,
+        rotulo: fixo.rotulo ?? fixo.def.rotulo,
+        def: fixo.def,
+        para: fixo.para,
+      };
     }
     return null;
   }
@@ -175,8 +182,9 @@ export class Jogo {
       return;
     }
 
-    if (alvo.tipo === 'saida') {
-      this.#avisar('pedirDeslocamento', { locais: this.outrosLocais() });
+    // Passagem: entra no prédio ou volta para a rua, sem menu no caminho.
+    if (alvo.tipo === 'ligacao') {
+      this.viajarPara(alvo.para, this.cenaAtual.id);
       return;
     }
 
@@ -188,17 +196,31 @@ export class Jogo {
     }
   }
 
-  /** Troca o local da investigação. */
-  viajarPara(idCena) {
+  /**
+   * Troca o local da investigação.
+   * Quando o destino tem uma passagem de volta para onde o detetive estava, ele
+   * chega nela — sai do prédio na porta do prédio, e não no ponto de partida do
+   * mapa. Sem isso, voltar para a rua teleportaria o jogador para longe.
+   * @param {string} idCena
+   * @param {string|null} vindoDe
+   */
+  viajarPara(idCena, vindoDe = null) {
     if (this.encerrado) return false;
     const cena = this.cenas.get(idCena);
     if (!cena || cena.id === this.cenaAtual.id) return false;
 
     this.cenaAtual = cena;
     this.detetive.pararAgora();
-    this.detetive.gx = cena.inicio.gx;
-    this.detetive.gy = cena.inicio.gy;
-    this.#avisar('viagem', { cena });
+
+    const volta = vindoDe ? cena.ligacaoPara(vindoDe) : null;
+    const chegada =
+      volta && cena.andavel(volta.gx, volta.gy)
+        ? { gx: volta.gx, gy: volta.gy }
+        : { gx: cena.inicio.gx, gy: cena.inicio.gy };
+
+    this.detetive.gx = chegada.gx;
+    this.detetive.gy = chegada.gy;
+    this.#avisar('viagem', { cena, chegada });
     return true;
   }
 

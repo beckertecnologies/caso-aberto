@@ -8,11 +8,12 @@ import { buscarCaminho, ladoAcessivel } from '../src/mundo/caminho.js';
 import { montarMisterio, julgar, pesarEvidencias, perguntasContraditaveis } from '../src/jogo/misterio.js';
 import { Jogo } from '../src/jogo/jogo.js';
 import { Progresso, DepositoMemoria } from '../src/jogo/persistencia.js';
+import { CENA_CIDADE } from '../src/dados/cena-cidade.js';
 import { CENA_APTO_302 } from '../src/dados/cena-apto302.js';
 import { CENA_ESCRITORIO } from '../src/dados/cena-escritorio.js';
 import { CASO_014 } from '../src/dados/caso-014.js';
 
-const CENAS = [CENA_APTO_302, CENA_ESCRITORIO];
+const CENAS = [CENA_CIDADE, CENA_APTO_302, CENA_ESCRITORIO];
 
 let falhas = 0;
 let checagens = 0;
@@ -68,10 +69,19 @@ conferir('ids de cena são únicos', new Set(cenas.map((c) => c.id)).size === ce
 
 for (const cena of cenas) {
   conferir(`${cena.id}: início andável`, cena.andavel(cena.inicio.gx, cena.inicio.gy), JSON.stringify(cena.inicio));
-  conferir(`${cena.id}: tem saída`, cena.pecas.some((p) => p.def.interacao === 'saida'));
-  conferir(`${cena.id}: tem pastas da perícia`, cena.pecas.filter((p) => p.def.interacao === 'documento').length >= 2);
-  conferir(`${cena.id}: tem pontos de vestígio`, cena.pontosDeVestigio.length >= 6, `${cena.pontosDeVestigio.length}`);
+  conferir(`${cena.id}: tem passagem para outro local`, cena.ligacoes.length >= 1, `${cena.ligacoes.length}`);
+  conferir(`${cena.id}: tem algo para ler`, cena.pecas.filter((p) => p.def.interacao === 'documento').length >= 1);
+  // A cidade é local de passagem: investigar acontece dentro dos prédios.
+  const investigavel = cena.pontosDeVestigio.length > 0;
+  conferir(
+    `${cena.id}: ${investigavel ? 'tem pontos de vestígio suficientes' : 'é local de passagem, sem vestígio'}`,
+    investigavel ? cena.pontosDeVestigio.length >= 6 : cena.pontosDeVestigio.length === 0,
+    `${cena.pontosDeVestigio.length} pontos`,
+  );
 }
+
+const investigaveis = cenas.filter((c) => c.pontosDeVestigio.length > 0);
+conferir('há pelo menos dois locais investigáveis', investigaveis.length >= 2, `${investigaveis.length}`);
 
 const capacidade = cenas.reduce((soma, c) => soma + c.pontosDeVestigio.length, 0);
 const precisa = CASO_014.composicao.incriminam + CASO_014.composicao.pistasFalsas + CASO_014.composicao.contexto;
@@ -82,12 +92,12 @@ conferir('capacidade total de pontos cobre o caso', capacidade >= precisa, `${ca
 secao('Documentos');
 
 for (const cena of cenas) {
-  const pastas = cena.pecas.filter((p) => p.def.interacao === 'documento').length;
+  const objetosDeLeitura = cena.pecas.filter((p) => p.def.interacao === 'documento').length;
   const docsPasta = CASO_014.documentos.filter((d) => d.cena === cena.id && d.alvo === 'pasta').length;
   conferir(
-    `${cena.id}: há documento para cada pasta`,
-    docsPasta >= pastas,
-    `${pastas} pastas e ${docsPasta} documentos`,
+    `${cena.id}: há documento para cada objeto de leitura`,
+    docsPasta >= objetosDeLeitura,
+    `${objetosDeLeitura} objetos e ${docsPasta} documentos`,
   );
 }
 
@@ -262,10 +272,16 @@ for (let i = 0; i < SEMENTES; i += 1) {
     }
   }
 
-  // Os dois locais precisam receber vestígios, senão a viagem não teria função.
-  for (const cena of cenas) {
+  // Todo local investigável precisa receber vestígio, senão a ida até lá
+  // não teria função. A cidade, por ser passagem, não pode receber nenhum.
+  for (const cena of investigaveis) {
     if (!misterio.vestigios.some((v) => v.cena === cena.id)) {
       erros.push(`${semente}: nenhum vestígio em ${cena.id}`);
+    }
+  }
+  for (const cena of cenas) {
+    if (cena.pontosDeVestigio.length === 0 && misterio.vestigios.some((v) => v.cena === cena.id)) {
+      erros.push(`${semente}: vestígio plantado no local de passagem ${cena.id}`);
     }
   }
 
@@ -359,29 +375,73 @@ secao('Interrogatório');
 
 // ---------- deslocamento ----------
 
-secao('Deslocamento entre locais');
+secao('A cidade como praça central');
 
 {
   const jogo = new Jogo(CENAS, CASO_014, 'viagem');
-  const primeira = jogo.cenaAtual.id;
-  const destino = jogo.outrosLocais()[0];
+  const cidade = jogo.cenaAtual;
 
-  conferir('há outro local para visitar', Boolean(destino));
-  conferir('viajar para o local atual é recusado', jogo.viajarPara(primeira) === false);
+  conferir('o detetive começa na cidade', cidade.id === 'cidade');
+  conferir(
+    'a cidade tem passagem para todos os outros locais',
+    jogo.ordemCenas
+      .filter((id) => id !== cidade.id)
+      .every((id) => cidade.ligacaoPara(id) !== null),
+    cidade.ligacoes.map((l) => l.para).join(', '),
+  );
+
+  // Toda passagem precisa ter volta, senão o jogador fica preso no prédio.
+  const semVolta = [];
+  for (const id of jogo.ordemCenas) {
+    const cena = jogo.cenas.get(id);
+    for (const ligacao of cena.ligacoes) {
+      const destino = jogo.cenas.get(ligacao.para);
+      if (!destino) semVolta.push(`${id} aponta para ${ligacao.para}, que não existe`);
+      else if (!destino.ligacaoPara(id)) semVolta.push(`${ligacao.para} não volta para ${id}`);
+    }
+  }
+  conferir('toda passagem tem caminho de volta', semVolta.length === 0, semVolta.join('; '));
+
+  // A porta precisa ser alcançável a pé a partir de onde o detetive chega.
+  const inalcancaveis = [];
+  for (const id of jogo.ordemCenas) {
+    const cena = jogo.cenas.get(id);
+    for (const ligacao of cena.ligacoes) {
+      const parada = ladoAcessivel(cena, ligacao, cena.inicio);
+      const mesmo = parada && parada.gx === cena.inicio.gx && parada.gy === cena.inicio.gy;
+      if (!parada || (!mesmo && !buscarCaminho(cena, cena.inicio, parada).length)) {
+        inalcancaveis.push(`${id}: porta para ${ligacao.para}`);
+      }
+    }
+  }
+  conferir('toda porta é alcançável a pé', inalcancaveis.length === 0, inalcancaveis.join('; '));
+
+  conferir('viajar para o local atual é recusado', jogo.viajarPara(cidade.id) === false);
   conferir('viajar para local inexistente é recusado', jogo.viajarPara('nao-existe') === false);
 
+  // Entra no prédio pela porta, como o jogador faria.
+  const porta = cidade.ligacoes[0];
   let avisou = null;
   jogo.escutar('viagem', ({ cena }) => (avisou = cena.id));
-  conferir('viagem aceita', jogo.viajarPara(destino.id) === true);
-  conferir('evento de viagem disparado', avisou === destino.id);
-  conferir('cena atual trocou', jogo.cenaAtual.id === destino.id);
-  conferir(
-    'detetive reposicionado no início do novo local',
-    jogo.detetive.gx === jogo.cenaAtual.inicio.gx && jogo.detetive.gy === jogo.cenaAtual.inicio.gy,
-  );
+
+  conferir('caminhou até a porta do prédio', andarAte(jogo, porta.gx, porta.gy));
+  conferir('examinar a porta leva ao local', jogo.cenaAtual.id === porta.para, jogo.cenaAtual.id);
+  conferir('evento de viagem disparado', avisou === porta.para);
   conferir(
     'só os vestígios do local atual ficam visíveis',
-    jogo.vestigiosVisiveis().every((v) => v.cena === destino.id),
+    jogo.vestigiosVisiveis().every((v) => v.cena === porta.para),
+  );
+
+  // E a volta deixa o detetive na porta daquele prédio, não no ponto de partida.
+  const dentro = jogo.cenaAtual;
+  const volta = dentro.ligacaoPara('cidade');
+  conferir('o local tem porta de volta para a rua', volta !== null);
+  conferir('caminhou até a saída', andarAte(jogo, volta.gx, volta.gy));
+  conferir('voltou para a cidade', jogo.cenaAtual.id === 'cidade');
+  conferir(
+    'chegou na porta do prédio de onde saiu, e não no ponto de partida',
+    jogo.detetive.gx === porta.gx && jogo.detetive.gy === porta.gy,
+    `(${jogo.detetive.gx},${jogo.detetive.gy}) esperado (${porta.gx},${porta.gy})`,
   );
 }
 
@@ -463,8 +523,9 @@ for (const semente of ['sim-1', 'sim-2', 'sim-3']) {
 
     const alvos = [
       ...jogo.vestigiosVisiveis().map((v) => ({ gx: v.gx, gy: v.gy })),
+      // Passagens ficam de fora: examinar uma delas trocaria de local no meio.
       ...[...jogo.cenaAtual.interativos.values()]
-        .filter((alvo) => alvo.tipo !== 'saida')
+        .filter((alvo) => alvo.tipo !== 'ligacao')
         .map((alvo) => ({ gx: alvo.gx, gy: alvo.gy })),
     ];
 

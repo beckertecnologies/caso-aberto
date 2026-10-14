@@ -315,9 +315,25 @@ export const CASO_014 = {
     },
   ],
 
-  // Documentos fixos. `cena` diz onde ficam; `alvo` diz a qual objeto pertencem.
-  // As pastas de um local recebem, em ordem, os documentos daquele local.
+  // Documentos fixos. `cena` diz onde ficam; `alvo` separa a marcação da vítima
+  // ('corpo') dos objetos de leitura ('pasta': pastas da perícia e a banca de
+  // jornal). Os objetos de leitura de um local recebem, em ordem, os documentos
+  // daquele local.
   documentos: [
+    {
+      id: 'jornal',
+      cena: 'cidade',
+      alvo: 'pasta',
+      titulo: 'Jornal da manhã',
+      cabecalho: 'Gazeta do Quarto Distrito — página 7',
+      texto:
+        'EMPRESÁRIO É ENCONTRADO MORTO NA RUA DAS ACÁCIAS\n\n' +
+        'O corpo de Augusto Vilar, 54 anos, foi encontrado na manhã de ontem no apartamento onde morava ' +
+        'sozinho. A polícia não confirma a causa e trata o caso como morte a esclarecer.\n\n' +
+        'Vizinhos relatam discussões frequentes no andar nas últimas semanas. A reportagem apurou que a ' +
+        'transportadora da vítima passava por disputa societária, mas não obteve resposta da empresa.\n\n' +
+        'O delegado responsável afirmou apenas que "todas as pessoas com acesso ao prédio serão ouvidas".',
+    },
     {
       id: 'corpo',
       cena: 'apto-302',

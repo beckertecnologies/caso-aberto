@@ -27,7 +27,10 @@ export function montarMisterio(caso, cenas, semente) {
     ...rng.amostrar(caso.contexto, contexto),
   ]);
 
-  const locais = sortearLocais(rng, cenas, selecionados.length);
+  // Locais sem ponto marcado são de passagem (a cidade, por exemplo): entram no
+  // mundo, mas não recebem vestígio.
+  const comPontos = cenas.filter((cena) => cena.pontos.length > 0);
+  const locais = sortearLocais(rng, comPontos, selecionados.length);
 
   const vestigios = selecionados.map((def, i) => ({
     ...def,
@@ -55,7 +58,7 @@ export function montarMisterio(caso, cenas, semente) {
  * Sem isso um local poderia ficar vazio e a viagem perderia sentido.
  */
 function sortearLocais(rng, cenas, quantidade) {
-  if (!cenas.length) throw new Error('É preciso pelo menos um local para plantar vestígios.');
+  if (!cenas.length) throw new Error('Nenhum local tem ponto de vestígio marcado.');
 
   const capacidade = cenas.reduce((soma, cena) => soma + cena.pontos.length, 0);
   if (capacidade < quantidade) {

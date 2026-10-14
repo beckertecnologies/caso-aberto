@@ -1,11 +1,12 @@
 // Interpreta o mapa ASCII e expõe consultas que o jogo precisa:
-// onde dá para pisar, onde ficam os objetos e onde um vestígio pode surgir.
+// onde dá para pisar, onde ficam os objetos, onde um vestígio pode surgir e
+// quais passagens levam a outros locais.
 
-import { CHAO, OBJETOS } from './tiles.js';
+import { CHAO, CHARS_LIGACAO, OBJETOS } from './tiles.js';
 
 export class Cena {
   /**
-   * @param {{id:string,nome:string,endereco:string,chao:string[],objetos:string[]}} dados
+   * @param {{id:string,nome:string,endereco:string,chao:string[],objetos:string[],ligacoes?:object}} dados
    */
   constructor(dados) {
     this.id = dados.id;
@@ -31,12 +32,16 @@ export class Cena {
     this.pontosDeVestigio = [];
     /** Mapa "gx,gy" -> objeto examinável. */
     this.interativos = new Map();
+    /** Passagens para outros locais. */
+    this.ligacoes = [];
     /** Fontes de luz quente, para a ambientação. */
     this.luzes = [];
     this.inicio = { gx: 1, gy: 1 };
 
     for (let gy = 0; gy < this.altura; gy += 1) {
+      const linha = dados.objetos[gy];
       for (let gx = 0; gx < this.largura; gx += 1) {
+        const ch = linha[gx];
         const def = this.objetos[gy][gx];
         if (!def) continue;
 
@@ -44,7 +49,13 @@ export class Cena {
         if (def.marcador === 'inicio') this.inicio = { gx, gy };
         if (def.forma) this.pecas.push({ gx, gy, def });
         if (def.luz) this.luzes.push({ gx, gy, raio: def.luz });
-        if (def.interacao) {
+
+        if (def.interacao === 'ligacao') {
+          const ligacao = dados.ligacoes?.[ch];
+          const destino = { gx, gy, def, tipo: 'ligacao', para: ligacao.para, rotulo: ligacao.rotulo };
+          this.interativos.set(`${gx},${gy}`, destino);
+          this.ligacoes.push(destino);
+        } else if (def.interacao) {
           this.interativos.set(`${gx},${gy}`, { gx, gy, def, tipo: def.interacao });
         }
       }
@@ -61,6 +72,7 @@ export class Cena {
     if (dados.chao.length !== dados.objetos.length) {
       problemas.push(`camadas com alturas diferentes (chao ${dados.chao.length}, objetos ${dados.objetos.length})`);
     }
+
     const largura = dados.chao[0].length;
     dados.chao.forEach((linha, i) => {
       if (linha.length !== largura) {
@@ -70,14 +82,36 @@ export class Cena {
         if (!(ch in CHAO)) problemas.push(`chao linha ${i}: caractere desconhecido "${ch}"`);
       }
     });
+
+    const usadas = new Set();
     dados.objetos.forEach((linha, i) => {
       if (linha.length !== largura) {
         problemas.push(`objetos linha ${i}: ${linha.length} caracteres, esperado ${largura}`);
       }
       for (const ch of linha) {
-        if (!(ch in OBJETOS)) problemas.push(`objetos linha ${i}: caractere desconhecido "${ch}"`);
+        if (!(ch in OBJETOS)) {
+          problemas.push(`objetos linha ${i}: caractere desconhecido "${ch}"`);
+          continue;
+        }
+        if (CHARS_LIGACAO.includes(ch)) {
+          usadas.add(ch);
+          const ligacao = dados.ligacoes?.[ch];
+          if (!ligacao?.para) {
+            problemas.push(`objetos linha ${i}: passagem "${ch}" sem destino em "ligacoes"`);
+          }
+        }
       }
     });
+
+    // Destino declarado que não aparece no mapa só gera confusão depois.
+    for (const ch of Object.keys(dados.ligacoes ?? {})) {
+      if (!CHARS_LIGACAO.includes(ch)) {
+        problemas.push(`ligacoes: "${ch}" não é um caractere de passagem`);
+      } else if (!usadas.has(ch)) {
+        problemas.push(`ligacoes: "${ch}" declarado mas ausente do mapa`);
+      }
+    }
+
     return [...new Set(problemas)];
   }
 
@@ -96,6 +130,11 @@ export class Cena {
 
   examinavelEm(gx, gy) {
     return this.interativos.get(`${gx},${gy}`) ?? null;
+  }
+
+  /** A passagem que leva a um local específico, se existir nesta cena. */
+  ligacaoPara(idCena) {
+    return this.ligacoes.find((l) => l.para === idCena) ?? null;
   }
 
   pecaEm(gx, gy) {

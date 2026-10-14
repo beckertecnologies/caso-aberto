@@ -115,7 +115,6 @@ export class Interface {
       this.fecharModal();
     });
 
-    jogo.escutar('pedirDeslocamento', ({ locais }) => this.abrirDeslocamento(locais));
     jogo.escutar('veredito', (veredito) => this.mostrarVeredito(veredito));
   }
 
@@ -436,7 +435,11 @@ export class Interface {
     const destinos = locais ?? this.jogo.outrosLocais();
     this.#abrirModal('Para onde ir');
     this.el.modalCorpo.append(
-      criar('p', 'modal__intro', `Você está em ${this.jogo.cenaAtual.nome}.`),
+      criar(
+        'p',
+        'modal__intro',
+        `Você está em ${this.jogo.cenaAtual.nome}. Dá para caminhar até as portas pela rua, ou ir direto por aqui.`,
+      ),
     );
 
     if (!destinos.length) {
@@ -445,7 +448,7 @@ export class Interface {
 
     for (const local of destinos) {
       const ficha = botao('suspeito', null, () => {
-        this.jogo.viajarPara(local.id);
+        this.jogo.viajarPara(local.id, this.jogo.cenaAtual.id);
         this.fecharModal();
       });
       ficha.append(criar('span', 'suspeito__nome', local.nome));

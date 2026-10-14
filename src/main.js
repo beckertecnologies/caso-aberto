@@ -9,12 +9,16 @@ import { Renderizador } from './render/renderizador.js';
 import { Interface } from './ui/interface.js';
 import { Jogo } from './jogo/jogo.js';
 import { Progresso } from './jogo/persistencia.js';
+import { CENA_CIDADE } from './dados/cena-cidade.js';
 import { CENA_APTO_302 } from './dados/cena-apto302.js';
 import { CENA_ESCRITORIO } from './dados/cena-escritorio.js';
 import { CASO_014 } from './dados/caso-014.js';
 
-/** Locais da investigação, na ordem em que aparecem. */
-const CENAS = [CENA_APTO_302, CENA_ESCRITORIO];
+/**
+ * Locais do mundo. O primeiro é onde o detetive começa: a cidade funciona como
+ * praça central, e os demais são alcançados pelas portas da rua.
+ */
+const CENAS = [CENA_CIDADE, CENA_APTO_302, CENA_ESCRITORIO];
 
 const canvas = document.getElementById('palco');
 const camera = new Camera();
@@ -93,7 +97,8 @@ function iniciar(semente, estadoSalvo = null) {
     progresso.salvar(jogo);
     ui.aviso(
       jogo.caso.titulo,
-      `${jogo.caso.resumo} Há ${jogo.misterio.total} vestígios espalhados entre os locais da investigação. ` +
+      `${jogo.caso.resumo} Você começa na rua: as portas iluminadas levam ao edifício e à transportadora. ` +
+        `Há ${jogo.misterio.total} vestígios espalhados pelos locais. ` +
         'Procure a marcação da vítima e as pastas da perícia, e confronte os depoimentos com o que achar.',
     );
   }
