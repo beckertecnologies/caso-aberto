@@ -20,6 +20,8 @@ const entrada = new Entrada(canvas);
 let jogo;
 let tileSobMouse = null;
 let alvoDestacado = null;
+/** Detecta a borda de subida do bloqueio, para parar a caminhada uma única vez. */
+let bloqueadoNoQuadroAnterior = false;
 
 const ui = new Interface({
   aoAcusar: (idSuspeito) => jogo.acusar(idSuspeito),
@@ -49,6 +51,7 @@ function iniciar(semente) {
 
   tileSobMouse = null;
   alvoDestacado = null;
+  bloqueadoNoQuadroAnterior = false;
   ui.aviso(
     jogo.caso.titulo,
     `${jogo.caso.resumo} Há ${jogo.misterio.total} vestígios nesta cena. Procure a marcação da vítima e as pastas da perícia.`,
@@ -80,10 +83,18 @@ function tratarCliques() {
 }
 
 function quadro(dt, tempo) {
-  entrada.definirBloqueio(ui.modalAberto);
+  // Balão ou documento aberto congela a cena: sem isso o jogador encadearia
+  // coletas sem ler nada, e a rota pendente continuaria após fechar.
+  const bloqueado = ui.bloqueiaMovimento;
+  entrada.definirBloqueio(bloqueado);
 
-  if (!ui.modalAberto) tratarCliques();
-  else entrada.consumirCliques();
+  if (bloqueado) {
+    entrada.consumirCliques();
+    if (!bloqueadoNoQuadroAnterior) jogo.detetive.pararAgora();
+  } else {
+    tratarCliques();
+  }
+  bloqueadoNoQuadroAnterior = bloqueado;
 
   jogo.atualizar(dt, entrada.direcaoTeclado());
 

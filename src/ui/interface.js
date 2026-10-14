@@ -2,7 +2,8 @@
 // leitura de documentos e acusação. Monta os nós pelo DOM (sem innerHTML com dados)
 // para que qualquer texto de caso entre sempre escapado.
 
-const TEMPO_AVISO = 4200;
+/** Duração da animação de saída do balão, para só então remover o nó. */
+const SAIDA_MS = 200;
 
 function criar(tag, classe, texto) {
   const no = document.createElement(tag);
@@ -52,8 +53,14 @@ export class Interface {
     return !this.el.modal.hidden;
   }
 
-  get algoAberto() {
-    return this.modalAberto || !this.el.caderno.hidden || !this.el.suspeitos.hidden;
+  /** Há algum balão de aviso aguardando ser fechado? */
+  get avisoAberto() {
+    return this.el.avisos.querySelector('.aviso:not(.aviso--saindo)') !== null;
+  }
+
+  /** Enquanto verdadeiro, o detetive não anda e os cliques na cena são ignorados. */
+  get bloqueiaMovimento() {
+    return this.modalAberto || this.avisoAberto;
   }
 
   /** Liga a interface a uma investigação (troca a cada "nova investigação"). */
@@ -64,6 +71,7 @@ export class Interface {
     this.el.local.textContent = `${jogo.cena.nome} — ${jogo.cena.endereco}`;
     this.el.semente.textContent = jogo.semente;
     this.fecharModal();
+    this.limparAvisos(); // balões da investigação anterior não sobrevivem ao reinício
     this.atualizarHud();
     this.renderCaderno();
     this.renderSuspeitos();
@@ -102,16 +110,62 @@ export class Interface {
 
   // ---------- avisos ----------
 
+  /**
+   * Balão de aviso. Fica na tela até o jogador fechar, e a cena pausa enquanto
+   * isso durar: o texto de um vestígio é conteúdo de jogo para ler, não uma
+   * notificação passageira.
+   */
   aviso(titulo, texto) {
     const caixa = criar('div', 'aviso');
-    caixa.append(criar('p', 'aviso__titulo', titulo));
-    if (texto) caixa.append(criar('p', 'aviso__texto', texto));
-    this.el.avisos.append(caixa);
+    caixa.setAttribute('role', 'group');
+    caixa.setAttribute('aria-label', titulo);
 
+    const conteudo = criar('div', 'aviso__conteudo');
+    conteudo.append(criar('p', 'aviso__titulo', titulo));
+    if (texto) conteudo.append(criar('p', 'aviso__texto', texto));
+    caixa.append(conteudo);
+
+    const botao = criar('button', 'botao botao--mini', 'Fechar ');
+    botao.type = 'button';
+    botao.append(criar('kbd', null, 'Esc'));
+    botao.addEventListener('click', () => this.#fecharAviso(caixa));
+
+    const acoes = criar('div', 'aviso__acoes');
+    acoes.append(botao);
+    caixa.append(acoes);
+
+    this.el.avisos.append(caixa);
+    this.#atualizarCortina();
+    // Com o movimento travado, o foco no botão deixa o teclado resolver o balão.
+    botao.focus({ preventScroll: true });
+    return caixa;
+  }
+
+  #fecharAviso(caixa) {
+    if (!caixa.isConnected || caixa.classList.contains('aviso--saindo')) return;
+    caixa.classList.add('aviso--saindo');
+    this.#atualizarCortina();
     setTimeout(() => {
-      caixa.classList.add('aviso--saindo');
-      setTimeout(() => caixa.remove(), 320);
-    }, TEMPO_AVISO);
+      caixa.remove();
+      this.#atualizarCortina();
+    }, SAIDA_MS);
+  }
+
+  /** Fecha o balão mais recente. Devolve false quando não havia nenhum. */
+  fecharAvisoTopo() {
+    const abertos = [...this.el.avisos.querySelectorAll('.aviso:not(.aviso--saindo)')];
+    if (!abertos.length) return false;
+    this.#fecharAviso(abertos[abertos.length - 1]);
+    return true;
+  }
+
+  limparAvisos() {
+    this.el.avisos.replaceChildren();
+    this.#atualizarCortina();
+  }
+
+  #atualizarCortina() {
+    this.el.avisos.classList.toggle('avisos--ativo', this.avisoAberto);
   }
 
   // ---------- caderno ----------
@@ -391,11 +445,14 @@ export class Interface {
 
     window.addEventListener('keydown', (evento) => {
       if (evento.key !== 'Escape') return;
-      if (this.modalAberto) this.fecharModal();
-      else {
-        this.fecharPainel('caderno');
-        this.fecharPainel('suspeitos');
+      // Ordem de prioridade: o que está mais na frente fecha primeiro.
+      if (this.modalAberto) {
+        this.fecharModal();
+        return;
       }
+      if (this.fecharAvisoTopo()) return;
+      this.fecharPainel('caderno');
+      this.fecharPainel('suspeitos');
     });
   }
 }
