@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Editor de mundo — Caso Aberto</title>
+<link rel="stylesheet" href="./estilo.css">
+</head>
+<body>
+
+<div id="app">
+  <canvas id="palco" aria-label="Mundo em edição"></canvas>
+
+  <header class="barra">
+    <div class="barra__grupo">
+      <label class="campo">
+        <span>Local</span>
+        <select id="sel-cena"></select>
+      </label>
+      <span id="nao-salvo" class="selo-sujo" role="status" hidden>não salvo</span>
+      <button type="button" id="btn-novo" class="botao">Novo local</button>
+    </div>
+
+    <div class="barra__grupo">
+      <label class="campo campo--curto">
+        <span>Largura</span>
+        <input type="number" id="in-largura" min="8" max="300" step="1">
+      </label>
+      <label class="campo campo--curto">
+        <span>Altura</span>
+        <input type="number" id="in-altura" min="8" max="300" step="1">
+      </label>
+      <button type="button" id="btn-tamanho" class="botao">Aplicar</button>
+    </div>
+
+    <div class="barra__grupo barra__grupo--fim">
+      <span id="nivel" class="indicador indicador--largo" title="Altura da próxima peça">nível 0</span>
+      <span id="zoom" class="indicador">100%</span>
+      <button type="button" id="btn-enquadrar" class="botao" title="Enquadra o mapa inteiro">Enquadrar</button>
+      <button type="button" id="btn-validar" class="botao">Validar</button>
+      <button type="button" id="btn-salvar" class="botao botao--destaque">Salvar</button>
+    </div>
+  </header>
+
+  <aside class="trilha">
+    <h2 class="trilha__titulo">Camada</h2>
+    <div id="camadas" class="trilha__lista"></div>
+
+    <h2 class="trilha__titulo">Ferramenta</h2>
+    <div id="ferramentas" class="trilha__lista"></div>
+
+    <h2 class="trilha__titulo">Mapa</h2>
+    <div id="tamanho" class="trilha__lista"></div>
+
+    <h2 class="trilha__titulo">Histórico</h2>
+    <div class="trilha__lista">
+      <button type="button" id="btn-desfazer" class="botao botao--largo">Desfazer <kbd>Z</kbd></button>
+      <button type="button" id="btn-refazer" class="botao botao--largo">Refazer <kbd>Y</kbd></button>
+    </div>
+  </aside>
+
+  <aside class="acervo">
+    <div class="acervo__topo">
+      <h2 id="acervo-titulo">Acervo</h2>
+      <input type="search" id="busca" class="busca" placeholder="Buscar peça" aria-label="Buscar peça">
+      <div id="grupos" class="acervo__grupos"></div>
+      <!--
+        A peça escolhida, com a orientação atual. A paleta lista um item por
+        modelo e mantém a miniatura numa orientação fixa, senão a lista dançaria
+        a cada giro; é aqui e no fantasma sobre o mapa que o giro aparece.
+        Sem peça na mão, aqui fica o aviso do modo de inspeção.
+      -->
+      <div id="selecionada" class="selecionada"></div>
+
+      <!--
+        Altura da peça. Serve para empilhar: parede sobre o piso, telhado sobre
+        a parede. Cada tile guarda uma peça por nível, então subir o nível não
+        apaga o que está embaixo.
+      -->
+      <div id="niveis" class="nivel">
+        <span class="nivel__rotulo">Altura</span>
+        <button type="button" id="btn-nivel-menos" class="botao" title="Desce um nível (V)">−</button>
+        <span id="nivel-valor" class="nivel__valor">0 (0 px)</span>
+        <button type="button" id="btn-nivel-mais" class="botao" title="Sobe um nível (F)">+</button>
+      </div>
+      <label class="opcao">
+        <input type="checkbox" id="chk-solido" checked>
+        <span>bloqueia passagem</span>
+      </label>
+      <label class="opcao" title="Vale só para local que ainda não tem saída nenhuma. Local que já tem porta não é mexido.">
+        <input type="checkbox" id="chk-volta" checked>
+        <span>dar saída a local sem porta</span>
+      </label>
+    </div>
+    <div id="paleta" class="acervo__paleta"></div>
+  </aside>
+
+  <footer class="rodape">
+    <span id="posicao" class="rodape__pos">—</span>
+    <span id="aviso" class="rodape__aviso"></span>
+    <span class="rodape__ajuda">
+      Clique direito é conta-gotas · botão do meio ou <kbd>Shift</kbd> arrastando move a vista ·
+      roda dá zoom ·
+      <kbd>1</kbd>–<kbd>5</kbd> trocam ferramenta · <kbd>Tab</kbd> troca camada ·
+      <kbd>R</kbd> gira · <kbd>F</kbd>/<kbd>V</kbd> mudam a altura · <kbd>X</kbd> volta ao nível 0 ·
+      <kbd>Esc</kbd> solta a peça e liga a inspeção
+    </span>
+  </footer>
+
+  <!--
+    Trocar de local recarrega o mapa do arquivo. Antes, quem tinha desenhado e
+    não salvo perdia tudo sem um aviso sequer — foi assim que um prédio inteiro
+    desapareceu. Agora a troca passa por aqui.
+  -->
+  <div id="dialogo-sujo" class="dialogo" hidden>
+    <div class="dialogo__caixa" role="alertdialog" aria-labelledby="sujo-titulo" aria-describedby="sujo-texto">
+      <h2 id="sujo-titulo">Você tem alterações não salvas</h2>
+      <p class="dialogo__nota" id="sujo-texto"></p>
+      <div class="dialogo__acoes">
+        <button type="button" id="sujo-cancelar" class="botao">Ficar aqui</button>
+        <button type="button" id="sujo-descartar" class="botao">Descartar</button>
+        <button type="button" id="sujo-salvar" class="botao botao--destaque">Salvar e continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dialogo" class="dialogo" hidden>
+    <form id="form-novo" class="dialogo__caixa">
+      <h2>Novo local</h2>
+      <label class="campo campo--bloco">
+        <span>Identificador (minúsculas e hífen)</span>
+        <input type="text" id="novo-id" pattern="[a-z0-9-]+" required placeholder="portaria">
+      </label>
+      <label class="campo campo--bloco">
+        <span>Nome</span>
+        <input type="text" id="novo-nome" required placeholder="Portaria do edifício">
+      </label>
+      <label class="campo campo--bloco">
+        <span>Endereço</span>
+        <input type="text" id="novo-endereco" placeholder="Rua das Acácias, 302 — térreo">
+      </label>
+      <div class="dialogo__linha">
+        <label class="campo campo--curto">
+          <span>Largura</span>
+          <input type="number" id="novo-largura" value="26" min="8" max="300">
+        </label>
+        <label class="campo campo--curto">
+          <span>Altura</span>
+          <input type="number" id="novo-altura" value="20" min="8" max="300">
+        </label>
+        <label class="opcao">
+          <input type="checkbox" id="novo-externo">
+          <span>local aberto</span>
+        </label>
+      </div>
+      <p class="dialogo__nota">
+        O arquivo é criado e já entra na lista de locais do jogo. Depois ligue-o a
+        outro local pela passagem, na camada Objetos.
+      </p>
+      <div class="dialogo__acoes">
+        <button type="button" id="novo-cancelar" class="botao">Cancelar</button>
+        <button type="submit" class="botao botao--destaque">Criar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

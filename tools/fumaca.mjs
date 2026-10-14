@@ -8,7 +8,7 @@
 // Aqui montamos um DOM mínimo, importamos o main.js como o navegador faria,
 // rodamos vários quadros e acionamos os atalhos. Qualquer exceção reprova.
 
-import { readFileSync } from 'node:fs';
+import { montarDom } from './dom-falso.mjs';
 
 let falhas = 0;
 let checagens = 0;
@@ -53,120 +53,11 @@ async function conferirAsync(descricao, acao) {
 }
 
 // ---------- DOM mínimo ----------
+//
+// O andaime mora em `dom-falso.mjs`, compartilhado com a fumaça do editor.
 
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const IDS = new Set([...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
-
-/** Contexto 2D no-op: aceita qualquer método de desenho e qualquer propriedade. */
-function contexto2d() {
-  const gradiente = { addColorStop() {} };
-  const base = {
-    canvas: { width: 1280, height: 720 },
-    createLinearGradient: () => gradiente,
-    createRadialGradient: () => gradiente,
-    createPattern: () => null,
-    measureText: () => ({ width: 10 }),
-  };
-  return new Proxy(base, {
-    get: (obj, prop) => (prop in obj ? obj[prop] : () => {}),
-    set: () => true,
-  });
-}
-
-function elemento(id = '') {
-  const ouvintes = new Map();
-  return {
-    id,
-    className: '',
-    textContent: '',
-    hidden: true,
-    disabled: false,
-    type: '',
-    dataset: {},
-    style: {},
-    isConnected: true,
-    clientWidth: 1280,
-    clientHeight: 720,
-    width: 0,
-    height: 0,
-    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-    append() {},
-    appendChild() {},
-    replaceChildren() {},
-    setAttribute() {},
-    getAttribute: () => null,
-    removeAttribute() {},
-    focus() {},
-    remove() {},
-    querySelector: () => null,
-    querySelectorAll: () => [],
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1280, height: 720 }),
-    getContext: () => contexto2d(),
-    addEventListener(tipo, fn) {
-      if (!ouvintes.has(tipo)) ouvintes.set(tipo, []);
-      ouvintes.get(tipo).push(fn);
-    },
-    removeEventListener() {},
-    disparar(tipo, evento = {}) {
-      for (const fn of ouvintes.get(tipo) ?? []) fn({ preventDefault() {}, ...evento });
-    },
-  };
-}
-
-const porId = new Map([...IDS].map((id) => [id, elemento(id)]));
-const ouvintesJanela = new Map();
-let aoQuadro = null;
-
-globalThis.document = {
-  getElementById: (id) => porId.get(id) ?? null,
-  createElement: () => elemento(),
-  createTextNode: (texto) => ({ nodeValue: texto }),
-  querySelector: () => null,
-  querySelectorAll: () => [],
-  addEventListener() {},
-  visibilityState: 'visible',
-  body: elemento('body'),
-};
-
-globalThis.window = {
-  addEventListener(tipo, fn) {
-    if (!ouvintesJanela.has(tipo)) ouvintesJanela.set(tipo, []);
-    ouvintesJanela.get(tipo).push(fn);
-  },
-  removeEventListener() {},
-  devicePixelRatio: 1,
-  innerWidth: 1280,
-  innerHeight: 720,
-};
-globalThis.HTMLInputElement = class {};
-globalThis.HTMLTextAreaElement = class {};
-globalThis.performance = { now: () => 0 };
-globalThis.requestAnimationFrame = (cb) => {
-  aoQuadro = cb;
-  return 1;
-};
-globalThis.cancelAnimationFrame = () => {};
-globalThis.location = { hash: '' };
-globalThis.history = { replaceState() {} };
-
-const memoria = new Map();
-globalThis.localStorage = {
-  getItem: (k) => (memoria.has(k) ? memoria.get(k) : null),
-  setItem: (k, v) => memoria.set(k, String(v)),
-  removeItem: (k) => memoria.delete(k),
-};
-
-function dispararNaJanela(tipo, evento) {
-  for (const fn of ouvintesJanela.get(tipo) ?? []) fn({ preventDefault() {}, ...evento });
-}
-
-/** Avança `n` quadros. Lança se algum deles quebrar. */
-function rodarQuadros(n, inicio = 16) {
-  for (let i = 0; i < n; i += 1) {
-    if (!aoQuadro) throw new Error('o laço parou de pedir quadros');
-    aoQuadro(inicio + i * 16);
-  }
-}
+const dom = montarDom(new URL('../index.html', import.meta.url));
+const { porId, ids: IDS, dispararNaJanela, rodarQuadros } = dom;
 
 // ---------- execução ----------
 
@@ -185,9 +76,9 @@ if (!importou) {
   process.exit(1);
 }
 
-conferir('o laço pediu o primeiro quadro', () => aoQuadro !== null);
+conferir('o laço pediu o primeiro quadro', () => dom.aoQuadro !== null);
 
-if (!aoQuadro) {
+if (!dom.aoQuadro) {
   console.error('\nO laço nunca pediu um quadro, então os testes seguintes não diriam nada.');
   process.exit(1);
 }
@@ -253,7 +144,284 @@ conferir('redimensionar a janela não quebra', () => {
   return true;
 });
 
-conferir('o progresso foi gravado no depósito', () => memoria.size > 0);
+conferir('o progresso foi gravado no depósito', () => dom.guardado.size > 0);
+
+
+// ---------- decoração e mapa grande ----------
+//
+// A decoração é camada de mundo, não de editor: entra na cena, bloqueia
+// passagem e é desenhada. O mapa grande é o caso que travava antes, quando o
+// chão era pré-renderizado inteiro numa imagem só e passava do limite de área
+// de canvas do navegador.
+
+console.log('\nDecoração e mapa grande');
+
+const { Jogo } = await import('../src/jogo/jogo.js');
+const { Cena } = await import('../src/mundo/cena.js');
+const { Camera } = await import('../src/core/camera.js');
+const { Renderizador } = await import('../src/render/renderizador.js');
+const { CENA_CIDADE } = await import('../src/dados/cena-cidade.js');
+const { OBJETOS, CHAO } = await import('../src/mundo/tiles.js');
+// A lista completa, a mesma que o jogo monta: local criado pelo editor entra
+// aqui sozinho, e a fumaça passa a cobri-lo.
+const { CENAS } = await import('../src/dados/cenas.js');
+const { CASO_014 } = await import('../src/dados/caso-014.js');
+const { VISUAL } = await import('../src/dados/visual.js');
+const { Acervo } = await import('../src/render/acervo.js');
+
+/** Cresce um mapa acrescentando faixas, como o editor faz. */
+function crescer(dados, colunas, linhas) {
+  for (let i = 0; i < colunas; i += 1) {
+    dados.chao = dados.chao.map((l) => `${l} `);
+    dados.objetos = dados.objetos.map((l) => `${l}.`);
+  }
+  for (let i = 0; i < linhas; i += 1) {
+    dados.chao.push(' '.repeat(dados.chao[0].length));
+    dados.objetos.push('.'.repeat(dados.objetos[0].length));
+  }
+  return dados;
+}
+
+{
+  const copia = (c) => ({ ...c, chao: [...c.chao], objetos: [...c.objetos] });
+  const cenas = CENAS.map(copia);
+
+  /**
+   * Acha um tile da cidade que esteja realmente vazio.
+   *
+   * Aqui havia uma coordenada fixa, e isso era frágil pelo motivo mais banal:
+   * a cidade é desenhada no editor, então basta alguém construir um prédio em
+   * cima para os testes de decoração passarem a falhar sem nada ter quebrado.
+   * Procurar na hora mantém o teste falando do que ele quer falar.
+   */
+  function acharLivre(dados) {
+    const cena = new Cena(dados);
+    for (let gy = 0; gy < cena.altura; gy += 1) {
+      for (let gx = 0; gx < cena.largura; gx += 1) {
+        if (!cena.andavel(gx, gy)) continue;
+        if (cena.examinavelEm(gx, gy) || cena.decoracaoEm(gx, gy)) continue;
+        if (gx === cena.inicio.gx && gy === cena.inicio.gy) continue;
+        if (cena.pontosDeVestigio.some((p) => p.gx === gx && p.gy === gy)) continue;
+        return { gx, gy };
+      }
+    }
+    return null;
+  }
+
+  const LIVRE = acharLivre(copia(CENA_CIDADE)) ?? { gx: 0, gy: 0 };
+
+  conferir(
+    'achou um tile livre na cidade para os testes de decoração',
+    () => acharLivre(copia(CENA_CIDADE)) !== null,
+  );
+
+  conferir('decoração entra na cena', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [{ peca: 'lib_bookcaseBooks_S', ...LIVRE, solido: true }];
+    const cena = new Cena(dados);
+    return cena.decoracaoEm(LIVRE.gx, LIVRE.gy)?.peca === 'lib_bookcaseBooks_S';
+  });
+
+  conferir('decoração sólida bloqueia a passagem', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [{ peca: 'dng_stoneWall_S', ...LIVRE, solido: true }];
+    return new Cena(dados).andavel(LIVRE.gx, LIVRE.gy) === false;
+  });
+
+  conferir('decoração sem sólido deixa passar', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [{ peca: 'lib_libraryChair_S', ...LIVRE }];
+    return new Cena(dados).andavel(LIVRE.gx, LIVRE.gy) === true;
+  });
+
+  conferir('coordenada quebrada é descartada', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [
+      { peca: 'x', gx: 1.5, gy: 2 },
+      { peca: '', gx: 3, gy: 3 },
+      { peca: 'ok', gx: 4, gy: 4 },
+    ];
+    const cena = new Cena(dados);
+    return cena.decoracoes.length === 1 && cena.decoracoes[0].peca === 'ok';
+  });
+
+  // ---------- altura por nível ----------
+  //
+  // Empilhar é o que permite montar uma casa: piso no chão, parede acima,
+  // telhado em cima. Antes a chave era só o tile, então pôr o telhado apagava
+  // a parede, e qualquer peça marcada como sólida emparedava o tile inteiro.
+
+  conferir('nível ausente vale zero', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [{ peca: 'dng_stoneWall_S', ...LIVRE }];
+    return new Cena(dados).decoracaoEm(LIVRE.gx, LIVRE.gy).nivel === 0;
+  });
+
+  conferir('nível fora da faixa é apertado para dentro', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [
+      { peca: 'a', ...LIVRE, nivel: -7 },
+      { peca: 'b', gx: LIVRE.gx + 1, gy: LIVRE.gy, nivel: 9999 },
+    ];
+    const cena = new Cena(dados);
+    return (
+      cena.decoracaoEm(LIVRE.gx, LIVRE.gy).nivel === 0 &&
+      cena.decoracaoEm(LIVRE.gx + 1, LIVRE.gy).nivel === 40
+    );
+  });
+
+  conferir('o mesmo tile guarda uma peça por nível', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [
+      { peca: 'piso', ...LIVRE, nivel: 0 },
+      { peca: 'parede', ...LIVRE, nivel: 3 },
+      { peca: 'telhado', ...LIVRE, nivel: 7 },
+    ];
+    const cena = new Cena(dados);
+    const coluna = cena.decoracoesEm(LIVRE.gx, LIVRE.gy);
+    return (
+      coluna.length === 3 &&
+      coluna.map((d) => d.peca).join(',') === 'piso,parede,telhado' &&
+      cena.decoracaoEm(LIVRE.gx, LIVRE.gy, 3).peca === 'parede'
+    );
+  });
+
+  conferir('sólido no chão bloqueia', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [{ peca: 'dng_stoneWall_S', ...LIVRE, solido: true, nivel: 0 }];
+    return new Cena(dados).andavel(LIVRE.gx, LIVRE.gy) === false;
+  });
+
+  conferir('sólido levantado deixa passar por baixo', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [{ peca: 'frm_roofCorner_E', ...LIVRE, solido: true, nivel: 6 }];
+    return new Cena(dados).andavel(LIVRE.gx, LIVRE.gy) === true;
+  });
+
+  conferir('desenha coluna de peças empilhadas sem lançar', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.decoracoes = [
+      { peca: 'dng_dirt_E', ...LIVRE, nivel: 0 },
+      { peca: 'dng_stoneWall_S', ...LIVRE, nivel: 2 },
+      { peca: 'frm_roofCorner_E', ...LIVRE, nivel: 5 },
+    ];
+    const cenas2 = CENAS.map(copia);
+    cenas2[0] = dados;
+    const jogo2 = new Jogo(cenas2, CASO_014, 'niveis');
+    const r = new Renderizador(palco, new Camera(), null);
+    r.desenhar(jogo2, null, null, 1);
+    // A prévia do editor passa pela mesma fila de desenho, nas três formas que
+    // ela assume: peça do acervo, peça da matriz e material de chão.
+    const variantes = [
+      { peca: 'dng_stoneWall_S', gx: LIVRE.gx, gy: LIVRE.gy, nivel: 4 },
+      { def: OBJETOS['#'], gx: LIVRE.gx, gy: LIVRE.gy, nivel: 0 },
+      { def: OBJETOS['Y'], gx: LIVRE.gx, gy: LIVRE.gy, nivel: 3 },
+      { terreno: CHAO['a'], gx: LIVRE.gx, gy: LIVRE.gy, nivel: 0 },
+      { gx: 0, gy: 0, nivel: 0 },
+    ];
+    for (const [i, previa] of variantes.entries()) {
+      r.previa = previa;
+      r.desenhar(jogo2, null, null, 2 + i);
+    }
+    return true;
+  });
+
+  // ---------- passagens em lista ----------
+  //
+  // Os caracteres 1..3 limitavam cada local a três saídas e guardavam o destino
+  // num campo separado. A lista não tem teto e carrega o destino junto.
+
+  conferir('passagem em lista entra como ligação', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.passagens = [{ gx: LIVRE.gx, gy: LIVRE.gy, para: 'delegacia', rotulo: 'Ir à delegacia' }];
+    const cena = new Cena(dados);
+    return cena.ligacaoPara('delegacia')?.gx === LIVRE.gx;
+  });
+
+  conferir('passagem em lista é examinável', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.passagens = [{ gx: LIVRE.gx, gy: LIVRE.gy, para: 'delegacia' }];
+    const alvo = new Cena(dados).examinavelEm(LIVRE.gx, LIVRE.gy);
+    return alvo?.tipo === 'ligacao' && alvo.para === 'delegacia';
+  });
+
+  conferir('convive com as passagens em caractere', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.passagens = [{ gx: LIVRE.gx, gy: LIVRE.gy, para: 'delegacia' }];
+    const cena = new Cena(dados);
+    // A cidade já tem três portas por caractere; a da lista é a quarta.
+    return cena.ligacoes.length === 4;
+  });
+
+  conferir('mais de três passagens é possível', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.passagens = [
+      { gx: 10, gy: 19, para: 'delegacia' },
+      { gx: 11, gy: 19, para: 'apto-302' },
+      { gx: 12, gy: 19, para: 'escritorio' },
+      { gx: 13, gy: 19, para: 'delegacia' },
+      { gx: 14, gy: 19, para: 'apto-302' },
+    ];
+    return new Cena(dados).ligacoes.length === 8;
+  });
+
+  conferir('passagem sem destino é recusada na conferência', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.passagens = [{ gx: 10, gy: 19 }];
+    return Cena.conferir(dados).some((p) => p.includes('sem destino'));
+  });
+
+  conferir('passagem fora do mapa é recusada na conferência', () => {
+    const dados = copia(CENA_CIDADE);
+    dados.passagens = [{ gx: 999, gy: 1, para: 'delegacia' }];
+    return Cena.conferir(dados).some((p) => p.includes('fora do mapa'));
+  });
+
+  conferir('o acervo lista as peças sem baixar imagem no Node', () => {
+    const acervo = new Acervo(VISUAL);
+    return acervo.idsDePecas().length > 500 && acervo.carregadas === 0;
+  });
+
+  // Mapa grande: 134 x 80, acima de dez mil tiles.
+  const grande = crescer(copia(CENA_CIDADE), 100, 56);
+  grande.decoracoes = [{ peca: 'dng_stoneWall_S', gx: 120, gy: 70, solido: true }];
+  cenas[0] = grande;
+
+  const jogo = new Jogo(cenas, CASO_014, 'mapa-grande');
+  const camera = new Camera();
+  const renderizador = new Renderizador(palco, camera, null);
+
+  conferir('o mapa grande monta', () => {
+    const cena = jogo.cenas.get('cidade');
+    return cena.largura > 130 && cena.altura > 75;
+  });
+
+  conferir('decoração no canto distante continua valendo', () => {
+    const cena = jogo.cenas.get('cidade');
+    return cena.decoracaoEm(120, 70)?.solido === true && cena.andavel(120, 70) === false;
+  });
+
+  conferir('desenha o mapa grande sem lançar', () => {
+    renderizador.desenhar(jogo, null, null, 1);
+    renderizador.desenhar(jogo, { gx: 4, gy: 4 }, null, 2);
+    return true;
+  });
+
+  conferir('o consumo de memória não cresce com o mapa', () => {
+    const cena = jogo.cenas.get('cidade');
+    const tiles = cena.largura * cena.altura;
+    if (tiles < 9000) throw new Error(`mapa pequeno demais para o teste: ${tiles} tiles`);
+    // Um losango por material e variação, não um por tile.
+    return renderizador.losangos.size < 60;
+  });
+
+  conferir('a grade de apoio também desenha sem lançar', () => {
+    renderizador.mostrarGrade = true;
+    renderizador.desenhar(jogo, { gx: 10, gy: 10 }, null, 3);
+    renderizador.mostrarGrade = false;
+    return true;
+  });
+}
 
 console.log(
   `\n${falhas === 0 ? 'Fumaça limpa' : 'Com falhas'}: ${checagens - falhas}/${checagens} checagens passaram.`,

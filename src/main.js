@@ -6,26 +6,28 @@ import { Loop } from './core/loop.js';
 import { gradeParaMundo, mundoParaGrade } from './core/iso.js';
 import { sementeAleatoria } from './core/rng.js';
 import { Renderizador } from './render/renderizador.js';
+import { Acervo } from './render/acervo.js';
+import { VISUAL } from './dados/visual.js';
 import { Interface } from './ui/interface.js';
 import { Jogo } from './jogo/jogo.js';
 import { Progresso } from './jogo/persistencia.js';
-import { CENA_CIDADE } from './dados/cena-cidade.js';
-import { CENA_APTO_302 } from './dados/cena-apto302.js';
-import { CENA_ESCRITORIO } from './dados/cena-escritorio.js';
-import { CENA_DELEGACIA } from './dados/cena-delegacia.js';
+// A lista de locais mora em `dados/cenas.js` para o `npm run check` poder lê-la
+// sem passar por este arquivo, que depende de canvas e janela.
+import { CENAS } from './dados/cenas.js';
 import { CASO_014 } from './dados/caso-014.js';
-
-/**
- * Locais do mundo. O primeiro é onde o detetive começa: a cidade funciona como
- * praça central, e os demais são alcançados pelas portas da rua.
- */
-const CENAS = [CENA_CIDADE, CENA_APTO_302, CENA_ESCRITORIO, CENA_DELEGACIA];
 
 const canvas = document.getElementById('palco');
 const camera = new Camera();
-const renderizador = new Renderizador(canvas, camera);
+const acervo = new Acervo(VISUAL);
+const renderizador = new Renderizador(canvas, camera, acervo);
 const entrada = new Entrada(canvas);
 const progresso = new Progresso();
+
+// Cada imagem que chega invalida o chão já pintado, para a textura entrar em
+// cena sem precisar recarregar a página.
+acervo.carregar(() => {
+  renderizador.esquecerLosangos();
+});
 
 /** @type {Jogo} */
 let jogo;
@@ -169,7 +171,30 @@ entrada.aoAtalho('KeyN', () => {
   iniciar(sementeAleatoria());
 });
 
+// A construção do mundo mora numa aplicação própria: `npm run editor`.
+// O jogo não carrega nada de edição, e o servidor dele é somente leitura.
+
 window.addEventListener('resize', () => renderizador.redimensionar());
+
+/**
+ * Recarrega a página quando o editor grava o mundo.
+ *
+ * Os mapas são módulos ES, então recarregar é o jeito simples e seguro de pegar
+ * a versão nova — sem reiniciar processo nenhum na mão.
+ */
+function vigiarMundo() {
+  let conhecida = null;
+  setInterval(async () => {
+    try {
+      const { versao } = await (await fetch('./api/versao')).json();
+      if (conhecida === null) conhecida = versao;
+      else if (versao !== conhecida) location.reload();
+    } catch {
+      // Sem servidor de desenvolvimento (site publicado): nada a vigiar.
+    }
+  }, 2000);
+}
+vigiarMundo();
 
 // Guarda a posição ao sair: os eventos de jogo não cobrem a caminhada em si.
 window.addEventListener('pagehide', () => progresso.salvar(jogo));

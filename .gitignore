@@ -5,3 +5,9 @@ node_modules/
 .env.*
 dist/
 .vscode/
+.mundo-versao
+
+# Cópia com imports reescritos que `tools/editor.mjs` usa para importar o
+# modelo do editor no Node. É apagada no fim; só sobra se o teste quebrar.
+tools/.mundo-editavel.gerado.mjs
+tools/.fumaca-editor/

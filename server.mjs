@@ -1,6 +1,6 @@
 // Servidor estático de desenvolvimento. Sem dependências: usa só o Node.
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 
 const RAIZ = resolve(import.meta.dirname);
@@ -28,8 +28,19 @@ function caminhoSeguro(url) {
   return destino;
 }
 
+
 const servidor = createServer(async (req, res) => {
   try {
+    const rota = (req.url || '/').split('?')[0];
+
+    // Só leitura: quem grava é o servidor do editor, em outra porta.
+    if (rota === '/api/versao' && req.method === 'GET') {
+      const versao = await readFile(join(RAIZ, '.mundo-versao'), 'utf8').catch(() => '0');
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ versao: versao.trim() }));
+      return;
+    }
+
     let destino = caminhoSeguro(req.url || '/');
     if (!destino) {
       res.writeHead(403).end('Acesso negado');

@@ -26,11 +26,20 @@ jobs:
   verificar:
     name: Verificar
     runs-on: ubuntu-latest
+    strategy:
+      # Duas versões de propósito. A 20.11 é o piso declarado em `engines`, e
+      # testar nela é o que pega uso acidental de API mais nova — as ferramentas
+      # dependem de `import.meta.dirname`, que só existe a partir dela. A 22
+      # pega o contrário: algo que funcionava e parou de funcionar. Já houve
+      # falha aqui que só aparecia numa das versões.
+      fail-fast: false
+      matrix:
+        node: ['20.11', '22']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
       - name: Rodar as checagens
         run: npm run check
 
@@ -43,15 +52,41 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # A conferência da pasta roda em Node; sem fixar a versão, ela fica à
+      # mercê do que vier pré-instalado na imagem do runner.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Preparar a pasta do site
-        # Só o que o navegador precisa. Fora: git, workflows, ferramentas de teste.
+        # Só o que o navegador precisa para JOGAR.
+        #
+        # Fora de propósito:
+        # - `editor/` e `editor-server.mjs`: o editor é ferramenta local. Ele
+        #   grava arquivo em disco e depende de um processo Node, que o Pages não
+        #   tem. Publicar a pasta faria o editor abrir e morrer no primeiro
+        #   `fetch`, com tela preta e erro no console — pior que não existir.
+        # - `tools/`: verificação e recorte de arte, nada que o jogo carregue.
+        # - `server.mjs`: servidor de desenvolvimento; no Pages quem serve é o
+        #   próprio Pages.
+        # - a prancha original do detetive e a prévia do recorte: 1,8 MB que só
+        #   servem para regerar o atlas, e regerar é tarefa de quem clona.
         run: |
           mkdir -p site
           cp index.html styles.css site/
           cp -r src site/
-          cp README.md LICENSE site/
+          cp README.md LICENSE ASSETS.md site/
+          mkdir -p site/assets
+          cp -r assets/chao assets/pecas site/assets/
+          mkdir -p site/assets/detetive
+          cp assets/detetive/caminhada.png site/assets/detetive/
           touch site/.nojekyll
+
+      # O jogo degrada em silêncio quando falta imagem: cai na arte procedural e
+      # segue jogável. Ótimo em produção, péssimo numa publicação — um `cp`
+      # esquecido passaria sem ninguém notar. Então aqui é erro.
+      - name: Conferir que o site tem toda a arte que o jogo pede
+        run: node tools/conferir-site.mjs site
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

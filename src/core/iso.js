@@ -4,6 +4,32 @@
 export const LARGURA_TILE = 64;
 export const ALTURA_TILE = 32;
 
+/**
+ * Quanto uma peça sobe por nível, em pixels de mundo.
+ *
+ * Serve para empilhar: pôr o telhado em cima da parede, a placa acima da porta,
+ * o lampião no alto do poste. Sem isso tudo assenta no chão e um telhado fica
+ * colado no piso.
+ *
+ * O passo é um quarto da aresta do cubo da grade (que é de 64 px) de propósito.
+ * Um passo grande seria mais rápido de usar e impossível de acertar: as peças do
+ * acervo não têm todas a mesma altura, e uma parede do pacote de masmorra sobe
+ * 52 px — não é múltiplo de nada redondo. Com passo de 16 dá para encostar o
+ * telhado nela de verdade, e quem quiser andar de cubo em cubo usa Shift, que
+ * pula quatro níveis.
+ */
+export const ALTURA_NIVEL = 16;
+
+/** Níveis aceitos. O teto existe só para um número digitado errado não sumir com a peça. */
+export const NIVEL_MAXIMO = 40;
+
+/** Garante que um nível vindo de arquivo ou de interface é inteiro e cabe. */
+export function nivelValido(valor) {
+  const n = Math.floor(Number(valor) || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(NIVEL_MAXIMO, n));
+}
+
 const MEIA_LARGURA = LARGURA_TILE / 2;
 const MEIA_ALTURA = ALTURA_TILE / 2;
 

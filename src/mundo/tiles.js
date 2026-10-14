@@ -1,15 +1,139 @@
 // Dicionário de terrenos e objetos. Cada caractere do mapa ASCII cai aqui.
 // Toda a arte é geométrica, desenhada em tempo real — não há sprites externos.
 
-/** Camada de chão. `andavel` decide se o detetive pode pisar. */
+/**
+ * Camada de chão. `andavel` decide se o detetive pode pisar.
+ *
+ * `material` escolhe a textura em `src/render/chao.js`. As cores são a paleta
+ * daquele material: `base` é o tom principal, `claro` e `escuro` dão a variação,
+ * e `junta` é o rejunte ou a emenda, quando o material tem uma.
+ * Mudar a aparência do jogo é mudar valores aqui.
+ */
 export const CHAO = {
-  ' ': { id: 'vazio', andavel: false, invisivel: true },
-  w: { id: 'tabua', andavel: true, topo: '#3a2e25', aresta: '#241c16', veio: '#46382c' },
-  t: { id: 'ladrilho', andavel: true, topo: '#2d363c', aresta: '#1f262b', xadrez: '#36424a' },
-  c: { id: 'tapete', andavel: true, topo: '#45202d', aresta: '#2e1420', veio: '#512734' },
-  p: { id: 'calcada', andavel: true, topo: '#32353b', aresta: '#23262b', xadrez: '#3a3e45' },
-  a: { id: 'asfalto', andavel: true, topo: '#22242a', aresta: '#191b20', xadrez: '#272a31' },
-  g: { id: 'grama', andavel: true, topo: '#1e2c21', aresta: '#16201a', veio: '#253626' },
+  // Fora do piso jogável. Não é buraco preto: é laje de concreto, o que faz a
+  // área ainda não construída parecer parte do mundo em vez de falha de desenho.
+  ' ': {
+    id: 'vazio',
+    andavel: false,
+    material: 'concreto',
+    base: '#2b2e34',
+    claro: '#34383f',
+    escuro: '#212429',
+    junta: '#1b1e22',
+  },
+  w: {
+    id: 'tabua',
+    andavel: true,
+    material: 'tabua',
+    base: '#3d3027',
+    claro: '#4e3e30',
+    escuro: '#2a2018',
+    veio: '#53412f',
+    junta: '#20190f',
+  },
+  t: {
+    id: 'ladrilho',
+    andavel: true,
+    material: 'ladrilho',
+    base: '#2d363d',
+    claro: '#374249',
+    escuro: '#222a30',
+    junta: '#1a2126',
+  },
+  c: {
+    id: 'tapete',
+    andavel: true,
+    material: 'tapete',
+    base: '#46212e',
+    claro: '#552b39',
+    escuro: '#331621',
+    junta: '#2a1119',
+  },
+  p: {
+    id: 'calcada',
+    andavel: true,
+    material: 'calcada',
+    base: '#3a3e45',
+    claro: '#464b53',
+    escuro: '#272b31',
+    junta: '#23272c',
+  },
+  a: {
+    id: 'asfalto',
+    andavel: true,
+    material: 'asfalto',
+    base: '#23262c',
+    claro: '#32363d',
+    escuro: '#1a1c21',
+    trinca: '#15171a',
+    junta: '#181a1e',
+  },
+  g: {
+    id: 'grama',
+    andavel: true,
+    material: 'grama',
+    base: '#20301f',
+    claro: '#2d4429',
+    escuro: '#162013',
+    junta: '#141d12',
+  },
+
+  // Variantes pintadas: mesmo material, mas `semTextura` manda ignorar o
+  // acervo de imagens e usar sempre a pintura procedural. Servem para misturar
+  // os dois acabamentos no mesmo mapa — expandir a praça com grama desenhada
+  // ao lado da grama texturizada, por exemplo.
+  A: {
+    id: 'asfalto-pintado',
+    andavel: true,
+    material: 'asfalto',
+    semTextura: true,
+    base: '#23262c',
+    claro: '#32363d',
+    escuro: '#1a1c21',
+    trinca: '#15171a',
+    junta: '#181a1e',
+  },
+  P: {
+    id: 'calcada-pintada',
+    andavel: true,
+    material: 'calcada',
+    semTextura: true,
+    base: '#3a3e45',
+    claro: '#464b53',
+    escuro: '#272b31',
+    junta: '#23272c',
+  },
+  G: {
+    id: 'grama-pintada',
+    andavel: true,
+    material: 'grama',
+    semTextura: true,
+    base: '#20301f',
+    claro: '#2d4429',
+    escuro: '#162013',
+    junta: '#141d12',
+  },
+  W: {
+    id: 'tabua-pintada',
+    andavel: true,
+    material: 'tabua',
+    semTextura: true,
+    base: '#3d3027',
+    claro: '#4e3e30',
+    escuro: '#2a2018',
+    veio: '#53412f',
+    junta: '#20190f',
+  },
+  T: {
+    id: 'ladrilho-pintado',
+    andavel: true,
+    material: 'ladrilho',
+    semTextura: true,
+    base: '#2d363d',
+    claro: '#374249',
+    escuro: '#222a30',
+    junta: '#1a2126',
+  },
 };
 
 /**

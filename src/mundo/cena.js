@@ -2,6 +2,7 @@
 // onde dá para pisar, onde ficam os objetos, onde um vestígio pode surgir e
 // quais passagens levam a outros locais.
 
+import { nivelValido } from '../core/iso.js';
 import { CHAO, CHARS_LIGACAO, OBJETOS } from './tiles.js';
 
 export class Cena {
@@ -36,6 +37,62 @@ export class Cena {
     this.interativos = new Map();
     /** Passagens para outros locais. */
     this.ligacoes = [];
+    /**
+     * Peças soltas, fora da matriz: `{ peca, gx, gy, solido }`.
+     *
+     * A matriz carrega o que tem significado de jogo (andável, examinável), e um
+     * caractere por tipo limita a paleta ao dicionário. A decoração é lista, não
+     * matriz, então aceita centenas de peças diferentes em qualquer posição.
+     */
+    this.decoracoes = [];
+    /** @type {Set<string>} tiles bloqueados por decoração sólida */
+    this.bloqueios = new Set();
+    /**
+     * Passagens declaradas em lista, com destino próprio.
+     *
+     * Os caracteres `1`..`3` continuam valendo para quem edita à mão, mas
+     * limitam a três por local e amarram o destino a um campo separado. A lista
+     * não tem limite e carrega o destino junto, então o editor consegue criar
+     * ligação para um prédio novo sem ninguém mexer em código.
+     */
+    this.passagens = [];
+
+    for (const bruta of dados.passagens ?? []) {
+      const gx = Number(bruta?.gx);
+      const gy = Number(bruta?.gy);
+      if (!bruta?.para || !Number.isInteger(gx) || !Number.isInteger(gy)) continue;
+      const passagem = {
+        gx,
+        gy,
+        para: String(bruta.para),
+        rotulo: bruta.rotulo ? String(bruta.rotulo) : `Ir para ${bruta.para}`,
+        tipo: 'ligacao',
+        def: OBJETOS['1'],
+      };
+      this.passagens.push(passagem);
+      this.ligacoes.push(passagem);
+      this.interativos.set(`${gx},${gy}`, passagem);
+    }
+
+    for (const bruta of dados.decoracoes ?? []) {
+      if (!bruta?.peca) continue;
+      const gx = Number(bruta.gx);
+      const gy = Number(bruta.gy);
+      if (!Number.isInteger(gx) || !Number.isInteger(gy)) continue;
+      const decoracao = {
+        peca: String(bruta.peca),
+        gx,
+        gy,
+        solido: Boolean(bruta.solido),
+        /** Altura em degraus de `ALTURA_NIVEL`. Zero é assentado no chão. */
+        nivel: nivelValido(bruta.nivel),
+      };
+      this.decoracoes.push(decoracao);
+      // Só o que está no chão barra a passagem. Peça levantada é cenário por
+      // cima — telhado, placa, viga —, e o detetive passa por baixo. Fazer peça
+      // alta bloquear emparedaria quem cobrisse a própria casa com telhado.
+      if (decoracao.solido && decoracao.nivel === 0) this.bloqueios.add(`${gx},${gy}`);
+    }
     /** Fontes de luz quente, para a ambientação. */
     this.luzes = [];
     this.inicio = { gx: 1, gy: 1 };
@@ -105,6 +162,19 @@ export class Cena {
       }
     });
 
+    // Passagens em lista: destino obrigatório e posição inteira dentro do mapa.
+    const altura = dados.chao.length;
+    (dados.passagens ?? []).forEach((p, i) => {
+      if (!p?.para || typeof p.para !== 'string') {
+        problemas.push(`passagens[${i}]: sem destino`);
+      }
+      if (!Number.isInteger(p?.gx) || !Number.isInteger(p?.gy)) {
+        problemas.push(`passagens[${i}]: posição precisa ser inteira`);
+      } else if (p.gx < 0 || p.gy < 0 || p.gx >= largura || p.gy >= altura) {
+        problemas.push(`passagens[${i}]: fora do mapa`);
+      }
+    });
+
     // Destino declarado que não aparece no mapa só gera confusão depois.
     for (const ch of Object.keys(dados.ligacoes ?? {})) {
       if (!CHARS_LIGACAO.includes(ch)) {
@@ -127,7 +197,32 @@ export class Cena {
     const terreno = this.chao[gy][gx];
     if (!terreno?.andavel) return false;
     const objeto = this.objetos[gy][gx];
-    return !objeto?.solido;
+    if (objeto?.solido) return false;
+    return !this.bloqueios.has(`${gx},${gy}`);
+  }
+
+  /**
+   * Decoração neste tile. Com `nivel`, a daquele nível; sem, a mais baixa.
+   *
+   * Um tile aceita uma peça por nível: é o que permite piso no chão, parede
+   * acima e telhado em cima de tudo na mesma coluna.
+   */
+  decoracaoEm(gx, gy, nivel = null) {
+    if (nivel === null) {
+      return (
+        this.decoracoes
+          .filter((d) => d.gx === gx && d.gy === gy)
+          .sort((a, b) => a.nivel - b.nivel)[0] ?? null
+      );
+    }
+    return this.decoracoes.find((d) => d.gx === gx && d.gy === gy && d.nivel === nivel) ?? null;
+  }
+
+  /** Todas as decorações de um tile, de baixo para cima. */
+  decoracoesEm(gx, gy) {
+    return this.decoracoes
+      .filter((d) => d.gx === gx && d.gy === gy)
+      .sort((a, b) => a.nivel - b.nivel);
   }
 
   examinavelEm(gx, gy) {

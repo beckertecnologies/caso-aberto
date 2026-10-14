@@ -8,13 +8,13 @@ import { buscarCaminho, ladoAcessivel } from '../src/mundo/caminho.js';
 import { montarMisterio, julgar, pesarEvidencias, perguntasContraditaveis } from '../src/jogo/misterio.js';
 import { Jogo } from '../src/jogo/jogo.js';
 import { Progresso, DepositoMemoria } from '../src/jogo/persistencia.js';
-import { CENA_CIDADE } from '../src/dados/cena-cidade.js';
-import { CENA_APTO_302 } from '../src/dados/cena-apto302.js';
-import { CENA_ESCRITORIO } from '../src/dados/cena-escritorio.js';
-import { CENA_DELEGACIA } from '../src/dados/cena-delegacia.js';
+// A mesma lista que o jogo usa. Antes era uma cópia com quatro locais fixos, e
+// qualquer prédio criado pelo editor ficava fora da verificação — pior: fazia a
+// checagem de "toda passagem tem volta" acusar um destino inexistente.
+import { CENAS } from '../src/dados/cenas.js';
 import { CASO_014 } from '../src/dados/caso-014.js';
 
-const CENAS = [CENA_CIDADE, CENA_APTO_302, CENA_ESCRITORIO, CENA_DELEGACIA];
+
 
 let falhas = 0;
 let checagens = 0;
@@ -71,7 +71,16 @@ conferir('ids de cena são únicos', new Set(cenas.map((c) => c.id)).size === ce
 for (const cena of cenas) {
   conferir(`${cena.id}: início andável`, cena.andavel(cena.inicio.gx, cena.inicio.gy), JSON.stringify(cena.inicio));
   conferir(`${cena.id}: tem passagem para outro local`, cena.ligacoes.length >= 1, `${cena.ligacoes.length}`);
-  conferir(`${cena.id}: tem algo para ler`, cena.pecas.filter((p) => p.def.interacao === 'documento').length >= 1);
+  // Pasta para ler é exigência só onde o caso guarda documento. Um local criado
+  // no editor pode ser apenas um lugar — um bar não precisa de laudo na mesa —,
+  // e exigir leitura de todo local transformava cada prédio novo numa falha.
+  const docsDaqui = CASO_014.documentos.filter((d) => d.cena === cena.id && d.alvo === 'pasta').length;
+  const leituras = cena.pecas.filter((p) => p.def.interacao === 'documento').length;
+  conferir(
+    `${cena.id}: ${docsDaqui ? 'tem onde ler os documentos do caso' : 'não guarda documento do caso'}`,
+    docsDaqui === 0 || leituras >= 1,
+    `${leituras} objetos de leitura para ${docsDaqui} documentos`,
+  );
   // Zero pontos é escolha válida: a delegacia é local de serviço, não cena de crime.
   const pontos = cena.pontosDeVestigio.length;
   const minimo = cena.externo ? 3 : 6;
@@ -656,25 +665,64 @@ secao('A cidade como praça central');
   const cidade = jogo.cenaAtual;
 
   conferir('o detetive começa na cidade', cidade.id === 'cidade');
-  conferir(
-    'a cidade tem passagem para todos os outros locais',
-    jogo.ordemCenas
-      .filter((id) => id !== cidade.id)
-      .every((id) => cidade.ligacaoPara(id) !== null),
-    cidade.ligacoes.map((l) => l.para).join(', '),
-  );
 
-  // Toda passagem precisa ter volta, senão o jogador fica preso no prédio.
-  const semVolta = [];
-  for (const id of jogo.ordemCenas) {
-    const cena = jogo.cenas.get(id);
+  // Alcançável a partir da cidade, não necessariamente ligado direto a ela.
+  // Exigir porta na rua para todo local proibiria aninhar — um corredor dentro
+  // do edifício, um depósito atrás do escritório —, e aninhar é legítimo.
+  const alcancados = new Set([cidade.id]);
+  const fila = [cidade.id];
+  while (fila.length) {
+    const cena = jogo.cenas.get(fila.shift());
     for (const ligacao of cena.ligacoes) {
-      const destino = jogo.cenas.get(ligacao.para);
-      if (!destino) semVolta.push(`${id} aponta para ${ligacao.para}, que não existe`);
-      else if (!destino.ligacaoPara(id)) semVolta.push(`${ligacao.para} não volta para ${id}`);
+      if (alcancados.has(ligacao.para)) continue;
+      if (!jogo.cenas.has(ligacao.para)) continue;
+      alcancados.add(ligacao.para);
+      fila.push(ligacao.para);
     }
   }
-  conferir('toda passagem tem caminho de volta', semVolta.length === 0, semVolta.join('; '));
+  const ilhados = jogo.ordemCenas.filter((id) => !alcancados.has(id));
+  conferir(
+    'todo local é alcançável a partir da cidade',
+    ilhados.length === 0,
+    ilhados.length ? `ilhados: ${ilhados.join(', ')}` : alcancados.size + ' locais',
+  );
+
+  // Passagem apontando para local que não existe é erro de digitação ou de um
+  // arquivo apagado: o jogador clica na porta e nada acontece.
+  const perdidas = [];
+  for (const id of jogo.ordemCenas) {
+    for (const ligacao of jogo.cenas.get(id).ligacoes) {
+      if (!jogo.cenas.has(ligacao.para)) {
+        perdidas.push(`${id} aponta para ${ligacao.para}, que não existe`);
+      }
+    }
+  }
+  conferir('nenhuma passagem aponta para local inexistente', perdidas.length === 0, perdidas.join('; '));
+
+  // O que importa é poder voltar à rua, não que cada par de portas seja
+  // simétrico. Exigir simetria proibia mão única — uma saída de emergência que
+  // dá noutra rua, por exemplo — sem o jogo precisar disso: chegando num local
+  // sem porta de volta para a origem, `viajarPara` põe o detetive no X.
+  const presos = [];
+  for (const inicio of jogo.ordemCenas) {
+    if (inicio === cidade.id) continue;
+    const vistos = new Set([inicio]);
+    const fila = [inicio];
+    let chegou = false;
+    while (fila.length && !chegou) {
+      for (const ligacao of jogo.cenas.get(fila.shift()).ligacoes) {
+        if (ligacao.para === cidade.id) {
+          chegou = true;
+          break;
+        }
+        if (vistos.has(ligacao.para) || !jogo.cenas.has(ligacao.para)) continue;
+        vistos.add(ligacao.para);
+        fila.push(ligacao.para);
+      }
+    }
+    if (!chegou) presos.push(inicio);
+  }
+  conferir('de todo local dá para voltar à cidade', presos.length === 0, presos.join('; '));
 
   // A porta precisa ser alcançável a pé a partir de onde o detetive chega.
   const inalcancaveis = [];

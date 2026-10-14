@@ -12,13 +12,37 @@ A movimentação é inspirada nos ARPG isométricos clássicos — clique no ch�
 npm start
 ```
 
-Abra `http://localhost:4300`. Não há dependências para instalar: o servidor usa só o Node (20 ou mais recente) e o jogo roda em módulos ES nativos no navegador.
+Abra `http://localhost:4300`. Não há dependências para instalar: o servidor usa só o Node (20.11 ou mais recente, por causa de `import.meta.dirname`) e o jogo roda em módulos ES nativos no navegador.
+
+```bash
+npm run editor
+```
+
+O editor de mundo, em `http://localhost:4400`. **Ele roda só na sua máquina, de propósito** — ver "O editor não vai ao ar" abaixo.
 
 ```bash
 npm run check
 ```
 
-São 187 checagens em dois passos. `tools/verificar.mjs` cobre mapas, navegabilidade com A*, coerência do roteiro, gerador em 240 sementes, interrogatório, cruzamentos, custo de errar, deslocamento, progresso salvo e partidas completas. `tools/fumaca.mjs` monta um DOM mínimo, importa o `main.js` como o navegador faria e roda quadros de verdade — é o que pega erro de renderizador, que a verificação de lógica não enxerga.
+São 316 checagens em cinco passos:
+
+| Passo | O que cobre |
+|---|---|
+| `tools/verificar.mjs` | mapas, navegabilidade com A*, coerência do roteiro, gerador em 240 sementes, interrogatório, cruzamentos, custo de errar, deslocamento, progresso salvo e partidas completas |
+| `tools/fumaca.mjs` | monta um DOM mínimo, importa o `main.js` como o navegador faria e roda quadros de verdade — pega erro de renderizador, que a lógica não enxerga |
+| `tools/editor.mjs` | as regras de edição: empilhamento por nível, borracha, giro das orientações, mensagens de validação, alinhamento do acervo |
+| `tools/fumaca-editor.mjs` | o editor pelo caminho real: escolher peça, girar, pintar, apagar, conta-gotas, validar e salvar |
+| `tools/detetive.mjs` | o atlas do personagem e o mapa das oito direções |
+
+## O editor não vai ao ar
+
+O código do editor **está** no repositório, mas o site publicado só tem o jogo. Não é esquecimento: o editor grava arquivo em disco e depende de um processo Node (`editor-server.mjs`), e o GitHub Pages serve arquivo estático, sem runtime. Publicar a pasta faria o editor abrir, tentar o primeiro `fetch` e morrer com tela preta — pior do que não existir.
+
+Quem clona o repositório tem o editor completo com `npm run editor`. Quem abre o link publicado joga.
+
+O passo de publicação em `.github/workflows/pages.yml` monta a pasta do site a dedo, e `tools/conferir-site.mjs` confere o resultado **nas duas direções**: que está lá toda a arte que o jogo pede, e que não foi junto nada de ferramenta local. Essa conferência existe porque o jogo degrada em silêncio — sem textura ele cai na pintura procedural e segue jogável, então um `cp` esquecido subiria um site sem arte sem avisar ninguém. Foi o que aconteceu uma vez.
+
+O servidor do editor escuta só em `127.0.0.1`. Ele escreve nos arquivos do projeto sem pedir autenticação, o que é aceitável para ferramenta de mesa e não seria para nada exposto na rede — não o coloque atrás de um túnel nem mude o endereço de escuta.
 
 ## Como se joga
 

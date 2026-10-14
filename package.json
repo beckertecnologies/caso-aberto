@@ -7,9 +7,12 @@
   "license": "MIT",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node tools/verificar.mjs && node tools/fumaca.mjs"
+    "editor": "node editor-server.mjs",
+    "assets": "node tools/indexar-assets.mjs",
+    "detetive": "node tools/recortar-detetive.mjs",
+    "check": "node tools/verificar.mjs && node tools/fumaca.mjs && node tools/editor.mjs && node tools/fumaca-editor.mjs && node tools/detetive.mjs && node tools/conferir-ids.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.11"
   }
 }
