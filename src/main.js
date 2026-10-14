@@ -3,7 +3,7 @@
 import { Camera } from './core/camera.js';
 import { Entrada } from './core/entrada.js';
 import { Loop } from './core/loop.js';
-import { mundoParaGrade } from './core/iso.js';
+import { gradeParaMundo, mundoParaGrade } from './core/iso.js';
 import { sementeAleatoria } from './core/rng.js';
 import { Renderizador } from './render/renderizador.js';
 import { Interface } from './ui/interface.js';
@@ -57,9 +57,9 @@ function iniciar(semente) {
 
 function posicaoDaCamera() {
   const { gx, gy } = jogo.detetive;
-  const meiaLargura = 32;
-  const meiaAltura = 16;
-  return { x: (gx - gy) * meiaLargura, y: (gx + gy) * meiaAltura - 24 };
+  const ponto = gradeParaMundo(gx, gy);
+  // Sobe um pouco o enquadramento: o detetive é desenhado acima do centro do tile.
+  return { x: ponto.x, y: ponto.y - 24 };
 }
 
 /** Converte a posição do ponteiro no tile correspondente da grade. */

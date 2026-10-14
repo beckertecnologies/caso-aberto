@@ -17,6 +17,11 @@
 
 * { box-sizing: border-box; }
 
+/* O atributo `hidden` precisa vencer os `display` declarados abaixo.
+   Sem isto, `.painel { display: flex }` e `.modal { display: flex }`
+   mantêm painel e modal na tela mesmo marcados como ocultos. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
