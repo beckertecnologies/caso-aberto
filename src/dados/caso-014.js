@@ -58,6 +58,16 @@ export const CASO_014 = {
           contradizPor: [],
           reacao: '',
         },
+        {
+          id: 'saida',
+          requerQuebra: 'onde',
+          texto: 'Você admitiu que foi até lá. Que horas saiu?',
+          resposta:
+            'Antes das onze. E não fui a última: tinha gente no corredor quando eu peguei o elevador. ' +
+            'Não vi quem era. Vi o vulto, e a luz do 301 acesa.',
+          contradizPor: [],
+          reacao: '',
+        },
       ],
     },
     {
@@ -92,6 +102,16 @@ export const CASO_014 = {
           texto: 'Como era sua relação com Augusto?',
           resposta:
             'De respeito. Ele reclamava de tudo, mas pagava em dia. Para mim, isso basta.',
+          contradizPor: [],
+          reacao: '',
+        },
+        {
+          id: 'corredor',
+          requerQuebra: 'onde',
+          texto: 'Se o horário está corrigido, você subiu. Viu alguém no andar?',
+          resposta:
+            'Subi para trocar uma lâmpada no corredor, foi só isso. A porta do 302 estava entreaberta e ' +
+            'dava para ouvir duas vozes. Não quis me meter. Quando desci, já estava tudo quieto.',
           contradizPor: [],
           reacao: '',
         },
@@ -131,6 +151,16 @@ export const CASO_014 = {
             '"Sem atrito" é a parte que ela não consegue repetir depois de ler o próprio bilhete. ' +
             '"Ele punha música alta até três da manhã. Qualquer um perderia a paciência."',
         },
+        {
+          id: 'quem',
+          requerQuebra: 'onde',
+          texto: 'Você esteve com ele naquela noite. Quem mais passou pelo andar?',
+          resposta:
+            'Bateram na porta dele enquanto eu ainda estava lá, e ele me pediu para ir embora. ' +
+            'Não abri a minha porta depois. Ouvi a discussão, e ela durou pouco.',
+          contradizPor: [],
+          reacao: '',
+        },
       ],
     },
     {
@@ -168,11 +198,26 @@ export const CASO_014 = {
             'A apólice fica entre os dois na mesa. "Ele quis fazer. Disse que era para me deixar tranquilo." ' +
             'Ele não explica a assinatura tremida.',
         },
+        {
+          id: 'porque',
+          requerQuebra: 'onde',
+          texto: 'Você chegou antes da meia-noite. Por que não procurou seu irmão?',
+          resposta:
+            'Porque eu procurei. Toquei a campainha e ninguém abriu, e o carro dele estava na garagem. ' +
+            'Imaginei que estivesse dormindo. Fui embora e não contei isso a ninguém.',
+          contradizPor: [],
+          reacao: '',
+        },
       ],
     },
   ],
 
   // Vestígios que apontam para alguém. Três por suspeito.
+  //
+  // `locais` diz onde o vestígio pode aparecer, e existe para o texto nunca
+  // contradizer o cenário: "caída atrás do sofá" não pode surgir numa sala de
+  // reuniões. Sem `locais`, o vestígio vai para qualquer local fechado — a rua
+  // e outros locais abertos só recebem o que pedir por eles explicitamente.
   acervo: [
     {
       id: 'm1',
@@ -185,6 +230,7 @@ export const CASO_014 = {
     },
     {
       id: 'm2',
+      locais: ['apto-302'], // o texto fala do sofá da sala
       nome: 'Caneta da transportadora',
       tipo: 'objeto',
       aponta: 'marcela',
@@ -203,6 +249,7 @@ export const CASO_014 = {
     },
     {
       id: 'h1',
+      locais: ['apto-302', 'cidade'], // a portaria fica na rua
       nome: 'Cópia de chave sem registro',
       tipo: 'objeto',
       aponta: 'heitor',
@@ -212,6 +259,7 @@ export const CASO_014 = {
     },
     {
       id: 'h2',
+      locais: ['apto-302', 'cidade'], // o par fica no armário da portaria
       nome: 'Luva de trabalho',
       tipo: 'vestígio',
       aponta: 'heitor',
@@ -221,6 +269,7 @@ export const CASO_014 = {
     },
     {
       id: 'h3',
+      locais: ['cidade', 'escritorio'], // folha de ponto fica onde se registra expediente
       nome: 'Folha de ponto emendada',
       tipo: 'documento',
       aponta: 'heitor',
@@ -229,6 +278,7 @@ export const CASO_014 = {
     },
     {
       id: 'r1',
+      locais: ['apto-302'], // papel de carta do 301, vizinho de porta
       nome: 'Bilhete amassado',
       tipo: 'documento',
       aponta: 'renata',
@@ -238,6 +288,7 @@ export const CASO_014 = {
     },
     {
       id: 'r2',
+      locais: ['apto-302'], // o texto fala do ladrilho molhado
       nome: 'Marca de salto no ladrilho',
       tipo: 'vestígio',
       aponta: 'renata',
@@ -246,6 +297,7 @@ export const CASO_014 = {
     },
     {
       id: 'r3',
+      locais: ['apto-302'], // segunda taça na pia da vítima
       nome: 'Taça com batom',
       tipo: 'objeto',
       aponta: 'renata',
@@ -264,6 +316,7 @@ export const CASO_014 = {
     },
     {
       id: 't2',
+      locais: ['apto-302'], // caiu entre o tapete e o rodapé da sala
       nome: 'Chaveiro com iniciais',
       tipo: 'objeto',
       aponta: 'tiago',
@@ -272,6 +325,7 @@ export const CASO_014 = {
     },
     {
       id: 't3',
+      locais: ['apto-302', 'escritorio', 'cidade'], // um cupom cabe em qualquer bolso
       nome: 'Comprovante de pedágio',
       tipo: 'vestígio',
       aponta: 'tiago',
@@ -285,6 +339,7 @@ export const CASO_014 = {
   contexto: [
     {
       id: 'c1',
+      locais: ['apto-302'], // relógio de parede da sala onde o corpo estava
       nome: 'Relógio de parede parado',
       tipo: 'vestígio',
       aponta: null,
@@ -292,6 +347,7 @@ export const CASO_014 = {
     },
     {
       id: 'c2',
+      locais: ['apto-302'], // o trinco é da cozinha do apartamento
       nome: 'Janela destrancada',
       tipo: 'vestígio',
       aponta: null,
@@ -312,6 +368,63 @@ export const CASO_014 = {
       aponta: null,
       texto:
         'A folha de ontem foi arrancada. O sulco na folha seguinte mostra um compromisso marcado para 23h.',
+    },
+  ],
+
+  // Cruzamentos: dedução que nasce de dois vestígios juntos e que nenhum dos
+  // dois entrega sozinho. Só aparece quando os dois estão no caderno, e como o
+  // sorteio não planta tudo em toda investigação, alguns cruzamentos nem existem
+  // em determinada partida.
+  cruzamentos: [
+    {
+      id: 'hora-da-chegada',
+      exige: ['c1', 't3'],
+      aponta: 'tiago',
+      titulo: 'A hora da chegada fecha',
+      texto:
+        'O relógio parou às 23h14. O cupom de pedágio marca 22h31 na entrada da cidade. ' +
+        'Quarenta e três minutos é tempo mais que suficiente para atravessar a cidade e subir até o 302 — ' +
+        'e põe Tiago Serra na rua certa na hora errada.',
+    },
+    {
+      id: 'entrada-de-servico',
+      exige: ['c2', 'h2'],
+      aponta: 'heitor',
+      titulo: 'Entrou por onde ninguém olha',
+      texto:
+        'O trinco da janela da cozinha está solto por dentro, e dali se alcança a escada de serviço. ' +
+        'A luva de raspa encontrada é par do que fica na portaria. ' +
+        'Não houve arrombamento porque não foi preciso: a entrada é de quem conhece o prédio.',
+    },
+    {
+      id: 'bebida-para-dois',
+      exige: ['c3', 'r3'],
+      aponta: 'renata',
+      titulo: 'A bebida foi servida para dois',
+      texto:
+        'O copo tem resíduo de sedativo em dose alta. A segunda taça na pia tem marca de batom. ' +
+        'A vítima não recebia visitas, segundo o irmão, mas alguém brindou com ela naquela noite — ' +
+        'e esse alguém saiu sem lavar a própria taça.',
+    },
+    {
+      id: 'compromisso-das-23',
+      exige: ['c4', 'm3'],
+      aponta: 'marcela',
+      titulo: 'O compromisso apagado',
+      texto:
+        'A folha arrancada da agenda marcava algo às 23h, e o sulco na página seguinte prova o horário. ' +
+        'O recado das 21h52 exigia resolver a pendência naquela mesma noite, sem advogado. ' +
+        'O compromisso que a vítima apagou tinha sido marcado por Marcela Vidotti.',
+    },
+    {
+      id: 'dinheiro-em-dois-sentidos',
+      exige: ['m1', 't1'],
+      aponta: null,
+      titulo: 'Dinheiro em dois sentidos',
+      texto:
+        'Um recibo de R$ 48.000 com a assinatura da vítima interrompida no meio, e um seguro de vida ' +
+        'contratado cinco semanas antes em nome do irmão. ' +
+        'A vítima devia de um lado e valia mais morta do outro. Isso amplia o motivo, não o aponta.',
     },
   ],
 
@@ -395,6 +508,32 @@ export const CASO_014 = {
         'A última, de R$ 48.000, tem a data de ontem.\n\n' +
         'O contador anotou ao lado que pediu explicação à vítima duas vezes e não obteve resposta.',
     },
+    {
+      id: 'ouvidos',
+      cena: 'delegacia',
+      alvo: 'pasta',
+      titulo: 'Termos de declaração',
+      cabecalho: 'Delegacia do 4º Distrito — pessoas ouvidas',
+      texto:
+        'Quatro pessoas foram ouvidas no mesmo dia, todas por livre comparecimento.\n\n' +
+        'Nenhuma das quatro apresentou testemunha capaz de confirmar onde estava entre 22h e 0h30. ' +
+        'As quatro tinham acesso ao andar: duas por morar no prédio, uma por trabalhar nele e uma por ' +
+        'parentesco com a vítima.\n\n' +
+        'Observação do escrivão: as versões são todas plausíveis e todas isoladas. ' +
+        'O inquérito depende de prova material que as contradiga.',
+    },
+    {
+      id: 'perícia-complementar',
+      cena: 'delegacia',
+      alvo: 'pasta',
+      titulo: 'Pedido de perícia complementar',
+      cabecalho: 'Delegacia do 4º Distrito — expediente interno',
+      texto:
+        'Solicitada análise comparativa das digitais colhidas no apartamento com as dos quatro ouvidos.\n\n' +
+        'Prazo estimado de retorno: quarenta dias.\n\n' +
+        'Despacho do delegado: "não temos quarenta dias. O que for recolhido na cena e confrontado com ' +
+        'os depoimentos vale mais, agora, do que o laudo que vai chegar depois."',
+    },
   ],
 
   // Quantos vestígios o gerador planta em cada investigação.
@@ -406,4 +545,8 @@ export const CASO_014 = {
 
   // Mínimo de vestígios para liberar a acusação.
   minimoParaAcusar: 3,
+
+  // Confrontos errados que um suspeito tolera antes de encerrar a conversa.
+  // É o que dá peso à escolha: confrontar no escuro custa acesso ao depoimento.
+  limiteDeTentativas: 2,
 };

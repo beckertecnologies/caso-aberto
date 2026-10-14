@@ -20,10 +20,15 @@ export const CENA_CIDADE = {
   nome: 'Rua das Acácias',
   endereco: 'quadra entre a Sete de Abril e a praça',
 
+  // Local aberto. Vestígio só aparece aqui se declarar este local em `locais`:
+  // um recibo de sociedade não fica caído na calçada, mas uma luva de trabalho fica.
+  externo: true,
+
   // Cada caractere de passagem aponta para outro local.
   ligacoes: {
     1: { para: 'apto-302', rotulo: 'Edifício Acácias — entrada do 302' },
     2: { para: 'escritorio', rotulo: 'Transportadora Vilar — portaria' },
+    3: { para: 'delegacia', rotulo: 'Delegacia do 4º Distrito' },
   },
 
   chao: [
@@ -47,8 +52,8 @@ export const CENA_CIDADE = {
     '  pgggggggggggggggggggggggggggap  ',
     '  pgggggggggggggggggggggggggggap  ',
     '  pgggggggggggggggggggggggggggap  ',
-    '  pgggggggggggggggggggggggggggap  ',
-    '  pgggggggggggggggggggggggggggap  ',
+    '  pgggggggggpppppppppppgggggggap  ',
+    '  pgggggggggpppppppppppgggggggap  ',
     '  pppppppppppppppppppppppppppppp  ',
     '                                  ',
   ],
@@ -64,19 +69,19 @@ export const CENA_CIDADE = {
     '....###########.....###########...',
     '....#####1#####.....#####2#####...',
     '...L..........................L...',
-    '.................X................',
+    '............*....X.....*..........',
     '..................................',
     '..................................',
     '..................................',
-    '.............J....................',
+    '.............J......*.............',
     '..................................',
     '.....Y......Y......Y.......Y......',
     '........H.................H.......',
-    '..................................',
+    '.........*..............*.........',
     '......Y..........L.........Y......',
-    '..................................',
-    '..................................',
-    '..................................',
+    '............####3######...........',
+    '............###########...........',
+    '............###########...........',
     '..................................',
   ],
 };

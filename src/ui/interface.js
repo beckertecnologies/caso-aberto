@@ -110,11 +110,18 @@ export class Interface {
       this.renderSuspeitos();
     });
 
+    jogo.escutar('cruzamento', ({ cruzamento }) => {
+      this.renderCaderno();
+      this.renderSuspeitos();
+      this.aviso(cruzamento.titulo, cruzamento.texto);
+    });
+
     jogo.escutar('viagem', () => {
       this.atualizarHud();
       this.fecharModal();
     });
 
+    jogo.escutar('pedirAcusacao', () => this.abrirAcusacao());
     jogo.escutar('veredito', (veredito) => this.mostrarVeredito(veredito));
   }
 
@@ -217,6 +224,12 @@ export class Interface {
       }
     }
 
+    const disponiveis = this.jogo.cruzamentosDisponiveis();
+    if (disponiveis.length) corpo.append(this.#grupoCruzar(disponiveis));
+
+    const deducoes = this.jogo.cruzamentosFeitos();
+    if (deducoes.length) corpo.append(this.#grupoDeducoes(deducoes, suspeitos));
+
     if (this.jogo.contradicoes.length) {
       corpo.append(this.#grupoContradicoes(suspeitos));
     }
@@ -247,6 +260,53 @@ export class Interface {
     titulo.append(criar('span', null, texto));
     titulo.append(criar('span', 'grupo__contagem', contagem));
     return titulo;
+  }
+
+  /** Dois vestígios que podem ser juntados agora. */
+  #grupoCruzar(disponiveis) {
+    const grupo = criar('div', 'grupo');
+    grupo.append(this.#tituloGrupo('Dá para cruzar', String(disponiveis.length)));
+
+    for (const cruzamento of disponiveis) {
+      const nomes = cruzamento.exige
+        .map((id) => this.jogo.recolhidos.find((v) => v.id === id)?.nome ?? id)
+        .join(' + ');
+      const ficha = criar('div', 'ficha');
+      ficha.append(criar('p', 'ficha__nome', nomes));
+      ficha.append(
+        criar('p', 'ficha__texto', 'Dois vestígios que podem dizer junto o que nenhum diz sozinho.'),
+      );
+      const rodape = criar('div', 'suspeito__rodape');
+      rodape.append(
+        botao('botao botao--mini', 'Cruzar', () => {
+          this.jogo.cruzar(cruzamento.id);
+          this.renderCaderno();
+        }),
+      );
+      ficha.append(rodape);
+      grupo.append(ficha);
+    }
+    return grupo;
+  }
+
+  /** Deduções já obtidas por cruzamento. */
+  #grupoDeducoes(deducoes, suspeitos) {
+    const grupo = criar('div', 'grupo');
+    grupo.append(this.#tituloGrupo('Deduções', String(deducoes.length)));
+
+    for (const cruzamento of deducoes) {
+      const ficha = criar('div', 'ficha');
+      const nome = criar('p', 'ficha__nome');
+      nome.append(document.createTextNode(cruzamento.titulo));
+      const alvo = cruzamento.aponta ? suspeitos.get(cruzamento.aponta) : null;
+      nome.append(
+        criar('span', alvo ? 'etiqueta' : 'etiqueta etiqueta--neutra', alvo ? alvo.nome : 'contexto'),
+      );
+      ficha.append(nome);
+      ficha.append(criar('p', 'ficha__texto', cruzamento.texto));
+      grupo.append(ficha);
+    }
+    return grupo;
   }
 
   #grupoContradicoes(suspeitos) {
@@ -335,9 +395,16 @@ export class Interface {
         );
       }
 
+      const fechado = this.jogo.suspeitoFechado(suspeito.id);
+      if (fechado) {
+        ficha.append(criar('span', 'suspeito__quebra', 'encerrou a conversa'));
+      }
+
       const rodape = criar('div', 'suspeito__rodape');
       rodape.append(
-        botao('botao botao--mini', 'Interrogar', () => this.abrirInterrogatorio(suspeito.id)),
+        botao('botao botao--mini', fechado ? 'Rever depoimento' : 'Interrogar', () =>
+          this.abrirInterrogatorio(suspeito.id),
+        ),
       );
       ficha.append(rodape);
 
@@ -362,12 +429,36 @@ export class Interface {
     corpo.replaceChildren();
     corpo.append(criar('p', 'modal__intro', `${suspeito.relacao}. ${suspeito.alibi}`));
 
-    for (const pergunta of suspeito.perguntas ?? []) {
+    // Só o que o suspeito aceita responder agora: perguntas presas a uma versão
+    // derrubada aparecem quando ela cai.
+    const disponiveis = this.jogo.perguntasDisponiveis(suspeito.id);
+    for (const pergunta of disponiveis) {
       corpo.append(this.#blocoPergunta(suspeito, pergunta));
     }
 
-    if (!suspeito.perguntas?.length) {
+    if (!disponiveis.length) {
       corpo.append(criar('p', 'vazio', 'Este suspeito ainda não tem depoimento registrado.'));
+    }
+
+    if (this.jogo.suspeitoFechado(suspeito.id)) {
+      corpo.append(
+        criar(
+          'p',
+          'pergunta__etiqueta',
+          'Conversa encerrada. Ele não responde mais nesta investigação.',
+        ),
+      );
+    }
+
+    const presas = (suspeito.perguntas ?? []).length - disponiveis.length;
+    if (presas > 0) {
+      corpo.append(
+        criar(
+          'p',
+          'pergunta__nota',
+          `Há ${presas} ${presas === 1 ? 'pergunta' : 'perguntas'} que só fazem sentido depois de derrubar a versão dele sobre a noite do crime.`,
+        ),
+      );
     }
   }
 
@@ -377,12 +468,13 @@ export class Interface {
 
     // Antes de perguntar, só o que se pode perguntar.
     if (!this.jogo.jaOuviu(suspeito.id, pergunta.id)) {
-      bloco.append(
-        botao('pergunta__fazer', pergunta.texto, () => {
-          this.jogo.ouvir(suspeito.id, pergunta.id);
-          this.#renderInterrogatorio(suspeito);
-        }),
-      );
+      const fazer = botao('pergunta__fazer', pergunta.texto, () => {
+        this.jogo.ouvir(suspeito.id, pergunta.id);
+        this.#renderInterrogatorio(suspeito);
+      });
+      // Pergunta que só existe porque uma versão caiu merece ser sinalizada.
+      if (pergunta.requerQuebra) fazer.append(criar('span', 'etiqueta', 'nova'));
+      bloco.append(fazer);
       return bloco;
     }
 
@@ -398,28 +490,48 @@ export class Interface {
       return bloco;
     }
 
-    const disponiveis = this.jogo.confrontosDisponiveis(suspeito.id, pergunta);
-    if (!disponiveis.length) {
-      bloco.append(
-        criar(
-          'p',
-          'pergunta__nota',
-          'Nada no caderno desmente esta resposta por enquanto.',
-        ),
-      );
+    if (this.jogo.suspeitoFechado(suspeito.id)) return bloco;
+
+    if (!this.jogo.recolhidos.length) {
+      bloco.append(criar('p', 'pergunta__nota', 'Sem nada no caderno, não há com o que confrontar.'));
       return bloco;
     }
 
+    // Todos os vestígios entram na lista, não só os que funcionam. É o jogador
+    // que decide, e errar custa acesso ao depoimento.
     const confrontos = criar('div', 'pergunta__confrontos');
-    for (const vestigio of disponiveis) {
-      confrontos.append(
-        botao('botao botao--mini', `Confrontar com ${vestigio.nome}`, () => {
-          this.jogo.confrontar(suspeito.id, pergunta.id, vestigio.id);
-          this.#renderInterrogatorio(suspeito);
-        }),
-      );
+    const escolha = criar('select', 'pergunta__escolha');
+    escolha.setAttribute('aria-label', `Vestígio para confrontar: ${pergunta.texto}`);
+    for (const vestigio of this.jogo.recolhidos) {
+      const opcao = criar('option', null, vestigio.nome);
+      opcao.value = vestigio.id;
+      escolha.append(opcao);
     }
+    confrontos.append(escolha);
+    confrontos.append(
+      botao('botao botao--mini', 'Confrontar', () => {
+        const resultado = this.jogo.confrontar(suspeito.id, pergunta.id, escolha.value);
+        if (resultado && !resultado.sucesso) {
+          this.aviso(
+            resultado.fechou ? `${suspeito.nome} encerrou a conversa` : 'O confronto não se sustentou',
+            resultado.fechou
+              ? 'Depois de duas acusações sem base, ele se recusa a continuar respondendo. As versões que faltavam ficam fora do seu alcance nesta investigação.'
+              : `Esse vestígio não desmente essa resposta, e ele percebeu. Restam ${resultado.restantes} ${resultado.restantes === 1 ? 'tentativa' : 'tentativas'} com ele.`,
+          );
+        }
+        this.#renderInterrogatorio(suspeito);
+      }),
+    );
     bloco.append(confrontos);
+
+    const restantes = this.jogo.tentativasRestantes(suspeito.id);
+    bloco.append(
+      criar(
+        'p',
+        'pergunta__nota',
+        `Confrontar sem base gasta uma tentativa. Restam ${restantes} com ${suspeito.nome.split(' ')[0]}.`,
+      ),
+    );
     return bloco;
   }
 
@@ -608,6 +720,11 @@ export class Interface {
       `Versões derrubadas: ${veredito.quebrasDoCulpado.length} de ${veredito.contradicoesPossiveis}.`,
       forca,
     ];
+    if (veredito.deducoes.length) {
+      itens.push(
+        `Deduções por cruzamento: ${veredito.deducoes.length}, das quais ${veredito.deducoesDoCulpado.length} reforçam o relato final.`,
+      );
+    }
     if (veredito.provasDoCulpado.length) {
       itens.push(`Decisivas: ${veredito.provasDoCulpado.map((v) => v.nome).join(', ')}.`);
     }

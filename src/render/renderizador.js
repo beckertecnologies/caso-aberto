@@ -204,6 +204,9 @@ export class Renderizador {
       case 'passagem':
         this.#passagem(x, y, destacada, tempo);
         break;
+      case 'registro':
+        this.#registro(x, y, destacada, tempo);
+        break;
       default:
         break;
     }
@@ -409,6 +412,41 @@ export class Renderizador {
     ctx.lineTo(6, 0);
     ctx.stroke();
     ctx.restore();
+    if (destacada) this.#aroDestaque(x, y, tempo);
+  }
+
+  /** Mesa de registro: escrivaninha baixa com papel e tinteiro em cima. */
+  #registro(x, y, destacada, tempo) {
+    const ctx = this.ctx;
+    this.#sombra(x, y, 0.9);
+    this.#bloco(x, y, 18, '#3c2d1c', '#2b2014', '#1f170e', 0.9);
+
+    ctx.save();
+    ctx.translate(x, y - 18);
+    // Folha de termo sobre a mesa
+    ctx.fillStyle = destacada ? '#f3ead4' : '#d6ccb4';
+    ctx.beginPath();
+    ctx.moveTo(-11, 0);
+    ctx.lineTo(0, -5);
+    ctx.lineTo(11, 0);
+    ctx.lineTo(0, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(70, 60, 44, 0.65)';
+    ctx.lineWidth = 1;
+    for (let i = -2; i <= 2; i += 2) {
+      ctx.beginPath();
+      ctx.moveTo(-5, i);
+      ctx.lineTo(5, i);
+      ctx.stroke();
+    }
+    // Tinteiro
+    ctx.fillStyle = '#1b1f26';
+    ctx.beginPath();
+    ctx.ellipse(9, -3, 3.2, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     if (destacada) this.#aroDestaque(x, y, tempo);
   }
 

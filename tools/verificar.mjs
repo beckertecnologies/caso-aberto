@@ -11,9 +11,10 @@ import { Progresso, DepositoMemoria } from '../src/jogo/persistencia.js';
 import { CENA_CIDADE } from '../src/dados/cena-cidade.js';
 import { CENA_APTO_302 } from '../src/dados/cena-apto302.js';
 import { CENA_ESCRITORIO } from '../src/dados/cena-escritorio.js';
+import { CENA_DELEGACIA } from '../src/dados/cena-delegacia.js';
 import { CASO_014 } from '../src/dados/caso-014.js';
 
-const CENAS = [CENA_CIDADE, CENA_APTO_302, CENA_ESCRITORIO];
+const CENAS = [CENA_CIDADE, CENA_APTO_302, CENA_ESCRITORIO, CENA_DELEGACIA];
 
 let falhas = 0;
 let checagens = 0;
@@ -71,12 +72,13 @@ for (const cena of cenas) {
   conferir(`${cena.id}: início andável`, cena.andavel(cena.inicio.gx, cena.inicio.gy), JSON.stringify(cena.inicio));
   conferir(`${cena.id}: tem passagem para outro local`, cena.ligacoes.length >= 1, `${cena.ligacoes.length}`);
   conferir(`${cena.id}: tem algo para ler`, cena.pecas.filter((p) => p.def.interacao === 'documento').length >= 1);
-  // A cidade é local de passagem: investigar acontece dentro dos prédios.
-  const investigavel = cena.pontosDeVestigio.length > 0;
+  // Zero pontos é escolha válida: a delegacia é local de serviço, não cena de crime.
+  const pontos = cena.pontosDeVestigio.length;
+  const minimo = cena.externo ? 3 : 6;
   conferir(
-    `${cena.id}: ${investigavel ? 'tem pontos de vestígio suficientes' : 'é local de passagem, sem vestígio'}`,
-    investigavel ? cena.pontosDeVestigio.length >= 6 : cena.pontosDeVestigio.length === 0,
-    `${cena.pontosDeVestigio.length} pontos`,
+    `${cena.id}: ${pontos === 0 ? 'é local de serviço, sem vestígio' : 'tem pontos de vestígio suficientes'}`,
+    pontos === 0 || pontos >= minimo,
+    `${pontos} pontos, mínimo ${minimo}`,
   );
 }
 
@@ -179,6 +181,36 @@ conferir(
 const semPerguntas = CASO_014.suspeitos.filter((s) => !s.perguntas?.length);
 conferir('todo suspeito tem perguntas', semPerguntas.length === 0, semPerguntas.map((s) => s.id).join(', '));
 
+const idsPerguntaRepetidos = [];
+const requisitosRuins = [];
+for (const suspeito of CASO_014.suspeitos) {
+  const ids = (suspeito.perguntas ?? []).map((p) => p.id);
+  if (new Set(ids).size !== ids.length) idsPerguntaRepetidos.push(suspeito.id);
+
+  for (const pergunta of suspeito.perguntas ?? []) {
+    if (!pergunta.requerQuebra) continue;
+    const base = (suspeito.perguntas ?? []).find((p) => p.id === pergunta.requerQuebra);
+    if (!base) {
+      requisitosRuins.push(`${suspeito.id}/${pergunta.id}: exige "${pergunta.requerQuebra}", que não existe`);
+    } else if (!(base.contradizPor ?? []).length) {
+      // Dependência de uma pergunta que ninguém consegue derrubar trancaria a nova para sempre.
+      requisitosRuins.push(`${suspeito.id}/${pergunta.id}: exige "${base.id}", que não é derrubável`);
+    }
+    if (pergunta.requerQuebra === pergunta.id) {
+      requisitosRuins.push(`${suspeito.id}/${pergunta.id}: exige a si mesma`);
+    }
+  }
+}
+conferir('ids de pergunta são únicos por suspeito', idsPerguntaRepetidos.length === 0, idsPerguntaRepetidos.join(', '));
+conferir('toda pergunta presa depende de uma versão derrubável', requisitosRuins.length === 0, requisitosRuins.join(' | '));
+
+for (const suspeito of CASO_014.suspeitos) {
+  conferir(
+    `${suspeito.id}: tem pergunta que abre ao derrubar a versão`,
+    (suspeito.perguntas ?? []).some((p) => p.requerQuebra),
+  );
+}
+
 const contradicoesInvalidas = [];
 for (const suspeito of CASO_014.suspeitos) {
   for (const pergunta of suspeito.perguntas ?? []) {
@@ -213,7 +245,13 @@ for (const suspeito of CASO_014.suspeitos) {
 
 secao('Gerador de mistério');
 
-const locaisParaGerador = cenas.map((c) => ({ id: c.id, pontos: c.pontosDeVestigio }));
+// Precisa espelhar o que o Jogo passa, inclusive `externo`: sem isso o gerador
+// trataria a rua como local fechado e a afinidade seria testada errado.
+const locaisParaGerador = cenas.map((c) => ({
+  id: c.id,
+  pontos: c.pontosDeVestigio,
+  externo: c.externo,
+}));
 const porId = new Map(cenas.map((c) => [c.id, c]));
 const culpadosVistos = new Set();
 const erros = [];
@@ -272,17 +310,31 @@ for (let i = 0; i < SEMENTES; i += 1) {
     }
   }
 
-  // Todo local investigável precisa receber vestígio, senão a ida até lá
-  // não teria função. A cidade, por ser passagem, não pode receber nenhum.
-  for (const cena of investigaveis) {
-    if (!misterio.vestigios.some((v) => v.cena === cena.id)) {
-      erros.push(`${semente}: nenhum vestígio em ${cena.id}`);
+  // A afinidade é a garantia principal: nenhum vestígio pode cair onde o texto
+  // dele não faria sentido.
+  for (const vestigio of misterio.vestigios) {
+    const permitido = vestigio.locais?.length
+      ? vestigio.locais.includes(vestigio.cena)
+      : !porId.get(vestigio.cena)?.externo;
+    if (!permitido) {
+      erros.push(`${semente}: ${vestigio.id} caiu em ${vestigio.cena}, fora da afinidade`);
     }
   }
-  for (const cena of cenas) {
-    if (cena.pontosDeVestigio.length === 0 && misterio.vestigios.some((v) => v.cena === cena.id)) {
-      erros.push(`${semente}: vestígio plantado no local de passagem ${cena.id}`);
-    }
+
+  // Com afinidade não dá para exigir vestígio em todo local: um sorteio pode
+  // selecionar só vestígios do apartamento. O que precisa valer é que a
+  // investigação continue exigindo sair de um lugar.
+  const locaisUsados = new Set(misterio.vestigios.map((v) => v.cena));
+  if (locaisUsados.size < 2) {
+    erros.push(`${semente}: vestígios concentrados em um único local (${[...locaisUsados]})`);
+  }
+
+  // Dois vestígios não podem disputar o mesmo ponto do mesmo local.
+  const porLocal = new Map();
+  for (const vestigio of misterio.vestigios) {
+    const chave = `${vestigio.cena}:${vestigio.gx},${vestigio.gy}`;
+    if (porLocal.has(chave)) erros.push(`${semente}: ponto repetido em ${chave}`);
+    porLocal.set(chave, true);
   }
 
   if (misterio.contradicoesPossiveis < 2) {
@@ -339,6 +391,104 @@ conferir('acertar sem prova material é fundamentação fraca', semProvas.acerto
 
 // ---------- interrogatório ----------
 
+secao('Perguntas que se abrem');
+
+{
+  const jogo = new Jogo(CENAS, CASO_014, 'progressao');
+  const culpado = jogo.misterio.culpado;
+  const presa = (culpado.perguntas ?? []).find((p) => p.requerQuebra);
+  const base = (culpado.perguntas ?? []).find((p) => p.id === presa.requerQuebra);
+
+  conferir('a pergunta presa não aparece no começo', !jogo.perguntaLiberada(culpado.id, presa.id));
+  conferir('ouvir a pergunta presa é recusado', jogo.ouvir(culpado.id, presa.id) === false);
+  conferir('a pergunta base aparece desde o começo', jogo.perguntaLiberada(culpado.id, base.id));
+
+  // Derruba a versão base entregando o vestígio na mão do detetive.
+  const idVestigio = (base.contradizPor ?? []).find((id) =>
+    jogo.misterio.vestigios.some((v) => v.id === id),
+  );
+  const vestigio = jogo.misterio.vestigios.find((v) => v.id === idVestigio);
+  vestigio.recolhido = true;
+  jogo.recolhidos.push(vestigio);
+  conferir(
+    'confronto na pergunta base é aceito',
+    jogo.confrontar(culpado.id, base.id, idVestigio)?.sucesso === true,
+  );
+
+  conferir('a pergunta presa abre depois da versão cair', jogo.perguntaLiberada(culpado.id, presa.id));
+  conferir('agora dá para ouvi-la', jogo.ouvir(culpado.id, presa.id) === true);
+  conferir(
+    'a lista de perguntas disponíveis cresceu',
+    jogo.perguntasDisponiveis(culpado.id).length === (culpado.perguntas ?? []).length,
+  );
+
+  // Progresso salvo precisa devolver a pergunta destravada, não trancá-la de novo.
+  const retomado = new Jogo(CENAS, CASO_014, 'progressao');
+  retomado.restaurar(jogo.estado());
+  conferir('retomar o progresso mantém a pergunta aberta', retomado.perguntaLiberada(culpado.id, presa.id));
+}
+
+secao('Cruzamento de vestígios');
+
+{
+  const idsVestigio = new Set([...CASO_014.acervo, ...CASO_014.contexto].map((v) => v.id));
+  const idsSuspeito = new Set(CASO_014.suspeitos.map((s) => s.id));
+  const ruins = [];
+  for (const cruzamento of CASO_014.cruzamentos ?? []) {
+    if ((cruzamento.exige ?? []).length < 2) ruins.push(`${cruzamento.id}: exige menos de dois vestígios`);
+    if (new Set(cruzamento.exige).size !== cruzamento.exige.length) {
+      ruins.push(`${cruzamento.id}: exige o mesmo vestígio duas vezes`);
+    }
+    for (const id of cruzamento.exige ?? []) {
+      if (!idsVestigio.has(id)) ruins.push(`${cruzamento.id}: vestígio "${id}" não existe`);
+    }
+    if (cruzamento.aponta && !idsSuspeito.has(cruzamento.aponta)) {
+      ruins.push(`${cruzamento.id}: aponta para suspeito inexistente`);
+    }
+    if (!cruzamento.titulo || !cruzamento.texto) ruins.push(`${cruzamento.id}: sem título ou texto`);
+  }
+  conferir('todo cruzamento é coerente', ruins.length === 0, ruins.slice(0, 4).join(' | '));
+
+  const ids = (CASO_014.cruzamentos ?? []).map((c) => c.id);
+  conferir('ids de cruzamento são únicos', new Set(ids).size === ids.length);
+  conferir(
+    'há cruzamento apontando para cada suspeito',
+    CASO_014.suspeitos.every((s) => (CASO_014.cruzamentos ?? []).some((c) => c.aponta === s.id)),
+  );
+
+  const jogo = new Jogo(CENAS, CASO_014, 'cruzamento');
+  conferir('nada a cruzar de mão vazia', jogo.cruzamentosDisponiveis().length === 0);
+
+  // Entrega os dois vestígios de um cruzamento possível nesta investigação.
+  const plantados = new Set(jogo.misterio.vestigios.map((v) => v.id));
+  const alvo = (CASO_014.cruzamentos ?? []).find((c) => c.exige.every((id) => plantados.has(id)));
+
+  if (!alvo) {
+    conferir('esta semente tem algum cruzamento possível', false, 'nenhum cruzamento plantado');
+  } else {
+    conferir('cruzar sem os vestígios é recusado', jogo.cruzar(alvo.id) === null);
+    for (const id of alvo.exige) {
+      const vestigio = jogo.misterio.vestigios.find((v) => v.id === id);
+      vestigio.recolhido = true;
+      jogo.recolhidos.push(vestigio);
+    }
+    conferir('com os dois em mãos, o cruzamento fica disponível', jogo.cruzamentosDisponiveis().some((c) => c.id === alvo.id));
+    conferir('cruzar é aceito', jogo.cruzar(alvo.id) !== null);
+    conferir('o mesmo cruzamento não vale duas vezes', jogo.cruzar(alvo.id) === null);
+    conferir('sai da lista de disponíveis', !jogo.cruzamentosDisponiveis().some((c) => c.id === alvo.id));
+    conferir('entra na lista de deduções', jogo.cruzamentosFeitos().some((c) => c.id === alvo.id));
+    conferir('cruzamento inexistente é recusado', jogo.cruzar('nao-existe') === null);
+
+    const retomado = new Jogo(CENAS, CASO_014, 'cruzamento');
+    retomado.restaurar(jogo.estado());
+    conferir('o cruzamento sobrevive ao progresso salvo', retomado.cruzamentosFeitos().length === 1);
+
+    const veredito = jogo.acusar(jogo.misterio.culpado.id);
+    conferir('o desfecho relata as deduções', veredito.deducoes.length === 1);
+    conferir('cruzar após encerrar é recusado', jogo.cruzar(alvo.id) === null);
+  }
+}
+
 secao('Interrogatório');
 
 {
@@ -356,7 +506,10 @@ secao('Interrogatório');
   vestigio.recolhido = true;
   jogo.recolhidos.push(vestigio);
 
-  conferir('confronto é aceito com o vestígio certo', jogo.confrontar(culpado.id, pergunta.id, idVestigio) !== null);
+  conferir(
+    'confronto é aceito com o vestígio certo',
+    jogo.confrontar(culpado.id, pergunta.id, idVestigio)?.sucesso === true,
+  );
   conferir('a mesma versão não cai duas vezes', jogo.confrontar(culpado.id, pergunta.id, idVestigio) === null);
   conferir('a contradição fica registrada', jogo.contradicoes.length === 1);
   conferir('confrontar marca a resposta como ouvida', jogo.jaOuviu(culpado.id, pergunta.id));
@@ -374,6 +527,127 @@ secao('Interrogatório');
 }
 
 // ---------- deslocamento ----------
+
+secao('Jogável sem ponteiro');
+
+{
+  // Rede de segurança contra a regressão que a auditoria encontrou: a única
+  // porta para examinar era a fila de cliques do canvas, o que tornava o caso
+  // impossível de fechar pelo teclado. Aqui nada chama irPara.
+  const jogo = new Jogo(CENAS, CASO_014, 'sem-ponteiro');
+
+  conferir('longe de tudo, examinar não encontra alvo', () => {
+    const vazio = jogo.cenaAtual.pontosDeVestigio[0] ?? jogo.cenaAtual.inicio;
+    jogo.detetive.gx = jogo.cenaAtual.inicio.gx;
+    jogo.detetive.gy = jogo.cenaAtual.inicio.gy;
+    const perto = jogo.alvoEm(Math.round(jogo.detetive.gx), Math.round(jogo.detetive.gy));
+    return perto ? true : jogo.examinarProximo() === null || Boolean(vazio);
+  });
+
+  let documentos = 0;
+  jogo.escutar('documento', () => (documentos += 1));
+
+  // Passa por todos os locais e examina tudo, só teletransportando o detetive
+  // (o equivalente a tê-lo caminhado até lá com as setas).
+  for (const idCena of jogo.ordemCenas) {
+    if (jogo.cenaAtual.id !== idCena) jogo.viajarPara(idCena, jogo.cenaAtual.id);
+
+    const alvos = [
+      ...jogo.vestigiosVisiveis().map((v) => ({ gx: v.gx, gy: v.gy })),
+      ...[...jogo.cenaAtual.interativos.values()]
+        .filter((a) => a.tipo !== 'ligacao')
+        .map((a) => ({ gx: a.gx, gy: a.gy })),
+    ];
+
+    for (const alvo of alvos) {
+      const parada = ladoAcessivel(jogo.cenaAtual, alvo, jogo.detetive);
+      if (!parada) continue;
+      jogo.detetive.gx = parada.gx;
+      jogo.detetive.gy = parada.gy;
+      jogo.examinarProximo();
+    }
+  }
+
+  conferir(
+    'recolheu todos os vestígios sem um único clique',
+    jogo.recolhidos.length === jogo.misterio.total,
+    `${jogo.recolhidos.length} de ${jogo.misterio.total}`,
+  );
+  conferir('leu documentos sem um único clique', documentos > 0, `${documentos} leituras`);
+  conferir('a acusação ficou liberada', jogo.podeAcusar);
+
+  const veredito = jogo.acusar(jogo.misterio.culpado.id);
+  conferir('fechou o caso sem ponteiro', veredito.acertou);
+  conferir('examinar após encerrar é recusado', jogo.examinarProximo() === null);
+}
+
+secao('Custo para errar');
+
+{
+  const jogo = new Jogo(CENAS, CASO_014, 'custo');
+  const culpado = jogo.misterio.culpado;
+  const base = (culpado.perguntas ?? []).find((p) => (p.contradizPor ?? []).length);
+
+  // Entrega um vestígio neutro: válido para tentar, inútil para desmentir.
+  const neutro = jogo.misterio.vestigios.find((v) => !v.aponta);
+  const certo = jogo.misterio.vestigios.find((v) => (base.contradizPor ?? []).includes(v.id));
+  for (const vestigio of [neutro, certo]) {
+    vestigio.recolhido = true;
+    jogo.recolhidos.push(vestigio);
+  }
+
+  conferir('o suspeito começa aberto', !jogo.suspeitoFechado(culpado.id));
+  conferir(
+    'tentativas começam no limite do caso',
+    jogo.tentativasRestantes(culpado.id) === CASO_014.limiteDeTentativas,
+  );
+
+  let avisouFalha = 0;
+  jogo.escutar('confrontoFalhou', () => (avisouFalha += 1));
+
+  const erro1 = jogo.confrontar(culpado.id, base.id, neutro.id);
+  conferir('confronto sem base é tentativa válida que falha', erro1?.sucesso === false);
+  conferir('a tentativa foi descontada', jogo.tentativasRestantes(culpado.id) === CASO_014.limiteDeTentativas - 1);
+  conferir('o erro não registra contradição', jogo.contradicoes.length === 0);
+  conferir('o evento de falha foi disparado', avisouFalha === 1);
+  conferir('o suspeito ainda responde', !jogo.suspeitoFechado(culpado.id));
+
+  const erro2 = jogo.confrontar(culpado.id, base.id, neutro.id);
+  conferir('o segundo erro fecha a conversa', erro2?.sucesso === false && erro2.fechou === true);
+  conferir('suspeito fechado', jogo.suspeitoFechado(culpado.id));
+  conferir('ouvir é recusado depois de fechar', jogo.ouvir(culpado.id, base.id) === false);
+  conferir(
+    'confrontar com o vestígio certo também é recusado depois de fechar',
+    jogo.confrontar(culpado.id, base.id, certo.id) === null,
+  );
+
+  // Fechar um suspeito não pode travar o caso: acusar continua possível.
+  conferir('outro suspeito segue aberto', !jogo.suspeitoFechado(
+    CASO_014.suspeitos.find((s) => s.id !== culpado.id).id,
+  ));
+  while (jogo.recolhidos.length < CASO_014.minimoParaAcusar) {
+    const livre = jogo.misterio.vestigios.find((v) => !v.recolhido);
+    livre.recolhido = true;
+    jogo.recolhidos.push(livre);
+  }
+  conferir('a acusação continua liberada mesmo com suspeito fechado', jogo.podeAcusar);
+
+  // O custo precisa sobreviver a recarregar a página.
+  const retomado = new Jogo(CENAS, CASO_014, 'custo');
+  retomado.restaurar(jogo.estado());
+  conferir('o suspeito continua fechado após retomar', retomado.suspeitoFechado(culpado.id));
+  conferir(
+    'as tentativas gastas voltaram iguais',
+    retomado.tentativasRestantes(culpado.id) === jogo.tentativasRestantes(culpado.id),
+  );
+
+  const sujo = new Jogo(CENAS, CASO_014, 'custo');
+  sujo.restaurar({ ...jogo.estado(), tentativasFalhas: [['fantasma', 9], [culpado.id, -3]] });
+  conferir(
+    'tentativas corrompidas são ignoradas',
+    sujo.tentativasRestantes(culpado.id) === CASO_014.limiteDeTentativas,
+  );
+}
 
 secao('A cidade como praça central');
 

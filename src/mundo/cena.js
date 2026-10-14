@@ -12,6 +12,8 @@ export class Cena {
     this.id = dados.id;
     this.nome = dados.nome;
     this.endereco = dados.endereco;
+    /** Local aberto: recebe vestígio só se o vestígio pedir este local. */
+    this.externo = Boolean(dados.externo);
 
     const problemas = Cena.conferir(dados);
     if (problemas.length) {

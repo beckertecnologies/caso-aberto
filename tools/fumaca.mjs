@@ -212,6 +212,12 @@ conferir('ponteiro fora da cena não quebra', () => {
   return true;
 });
 
+conferir('examinar pelo teclado não quebra', () => {
+  dispararNaJanela('keydown', { code: 'KeyE', key: 'KeyE' });
+  rodarQuadros(5);
+  return true;
+});
+
 for (const [tecla, nome] of [
   ['KeyC', 'caderno'],
   ['KeyF', 'suspeitos'],

@@ -441,7 +441,21 @@ html, body {
 
 .pergunta__nota { margin: 9px 0 0; font-size: 0.74rem; color: var(--tinta-fraca); font-style: italic; }
 
-.pergunta__confrontos { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.pergunta__confrontos { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 10px; }
+
+.pergunta__escolha {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--borda);
+  border-radius: 3px;
+  background: var(--fundo-painel-alto);
+  color: var(--tinta);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.pergunta__escolha:focus-visible { outline: 2px solid var(--ambar); outline-offset: 2px; }
 
 .modal__intro { margin: 0 0 14px; font-size: 0.8rem; color: var(--tinta-fraca); }
 

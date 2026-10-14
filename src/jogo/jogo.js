@@ -31,7 +31,11 @@ export class Jogo {
     this.caso = caso;
     this.misterio = montarMisterio(
       caso,
-      this.ordemCenas.map((id) => ({ id, pontos: this.cenas.get(id).pontosDeVestigio })),
+      this.ordemCenas.map((id) => ({
+        id,
+        pontos: this.cenas.get(id).pontosDeVestigio,
+        externo: this.cenas.get(id).externo,
+      })),
       semente,
     );
 
@@ -46,6 +50,10 @@ export class Jogo {
     this.respostasOuvidas = new Set();
     /** @type {{suspeito:string,pergunta:string,vestigio:string}[]} mentiras derrubadas */
     this.contradicoes = [];
+    /** @type {string[]} ids de cruzamentos já deduzidos */
+    this.cruzamentos = [];
+    /** @type {Map<string, number>} confrontos errados por suspeito */
+    this.tentativasFalhas = new Map();
 
     this.encerrado = false;
     this.veredito = null;
@@ -129,6 +137,41 @@ export class Jogo {
     return this.respostasOuvidas.has(`${idSuspeito}:${idPergunta}`);
   }
 
+  /** Quantos confrontos errados o suspeito ainda tolera antes de se fechar. */
+  get limiteDeTentativas() {
+    return this.caso.limiteDeTentativas ?? 2;
+  }
+
+  tentativasRestantes(idSuspeito) {
+    return Math.max(0, this.limiteDeTentativas - (this.tentativasFalhas.get(idSuspeito) ?? 0));
+  }
+
+  /**
+   * O suspeito encerrou a conversa? Acontece ao errar confrontos demais.
+   * Fechar não impede acusar: o jogador perde o acesso às versões dele, não o caso.
+   */
+  suspeitoFechado(idSuspeito) {
+    return this.tentativasRestantes(idSuspeito) === 0;
+  }
+
+  /**
+   * Perguntas que o suspeito aceita responder agora.
+   * Uma pergunta com `requerQuebra` só aparece depois que aquela versão caiu:
+   * é o avanço da conversa, em vez de uma lista fixa de três itens.
+   */
+  perguntasDisponiveis(idSuspeito) {
+    const suspeito = this.caso.suspeitos.find((s) => s.id === idSuspeito);
+    if (!suspeito) return [];
+    return (suspeito.perguntas ?? []).filter(
+      (pergunta) => !pergunta.requerQuebra || this.contradicaoDe(idSuspeito, pergunta.requerQuebra),
+    );
+  }
+
+  /** A pergunta já foi destravada nesta investigação? */
+  perguntaLiberada(idSuspeito, idPergunta) {
+    return this.perguntasDisponiveis(idSuspeito).some((p) => p.id === idPergunta);
+  }
+
   contradicaoDe(idSuspeito, idPergunta) {
     return (
       this.contradicoes.find((c) => c.suspeito === idSuspeito && c.pergunta === idPergunta) ?? null
@@ -139,6 +182,21 @@ export class Jogo {
   confrontosDisponiveis(idSuspeito, pergunta) {
     if (this.contradicaoDe(idSuspeito, pergunta.id)) return [];
     return vestigiosQueDerrubam(pergunta, this.recolhidos);
+  }
+
+  /** Cruzamentos cujos dois vestígios já estão no caderno e que ainda não foram feitos. */
+  cruzamentosDisponiveis() {
+    const emMaos = new Set(this.recolhidos.map((v) => v.id));
+    return (this.caso.cruzamentos ?? []).filter(
+      (cruzamento) =>
+        !this.cruzamentos.includes(cruzamento.id) &&
+        cruzamento.exige.every((id) => emMaos.has(id)),
+    );
+  }
+
+  /** As deduções já feitas, na ordem. */
+  cruzamentosFeitos() {
+    return (this.caso.cruzamentos ?? []).filter((c) => this.cruzamentos.includes(c.id));
   }
 
   // ---------- intenções ----------
@@ -188,12 +246,51 @@ export class Jogo {
       return;
     }
 
+    // Mesa de registro da delegacia: é onde a acusação se formaliza.
+    if (alvo.tipo === 'acusacao') {
+      this.#avisar('pedirAcusacao', {});
+      return;
+    }
+
     const documento = this.#documentoPara(alvo);
     if (documento) {
       const novo = !this.documentosLidos.has(documento.id);
       this.documentosLidos.add(documento.id);
       this.#avisar('documento', { documento, novo });
     }
+  }
+
+  /**
+   * Examina o alvo mais próximo dentro do alcance.
+   *
+   * Existe porque, sem isto, a única porta de entrada para `examinar` é a fila
+   * de cliques do canvas: recolher vestígio, ler documento e atravessar passagem
+   * ficavam impossíveis sem mouse, e como acusar exige vestígios em mãos, o jogo
+   * não tinha como ser terminado pelo teclado.
+   */
+  examinarProximo() {
+    if (this.encerrado) return null;
+
+    const raio = Math.ceil(ALCANCE);
+    const cx = Math.round(this.detetive.gx);
+    const cy = Math.round(this.detetive.gy);
+    const candidatos = [];
+
+    for (let gy = cy - raio; gy <= cy + raio; gy += 1) {
+      for (let gx = cx - raio; gx <= cx + raio; gx += 1) {
+        if (!this.cenaAtual.dentro(gx, gy)) continue;
+        const distancia = this.detetive.distanciaAte(gx, gy);
+        if (distancia > ALCANCE) continue;
+        const alvo = this.alvoEm(gx, gy);
+        if (alvo) candidatos.push({ alvo, distancia });
+      }
+    }
+
+    if (!candidatos.length) return null;
+    candidatos.sort((a, b) => a.distancia - b.distancia);
+    const escolhido = candidatos[0].alvo;
+    this.examinar(escolhido);
+    return escolhido;
   }
 
   /**
@@ -226,6 +323,8 @@ export class Jogo {
 
   /** Marca uma resposta como ouvida no interrogatório. */
   ouvir(idSuspeito, idPergunta) {
+    if (this.encerrado || this.suspeitoFechado(idSuspeito)) return false;
+    if (!this.perguntaLiberada(idSuspeito, idPergunta)) return false;
     const chave = `${idSuspeito}:${idPergunta}`;
     if (this.respostasOuvidas.has(chave)) return false;
     this.respostasOuvidas.add(chave);
@@ -234,32 +333,76 @@ export class Jogo {
   }
 
   /**
-   * Confronta uma resposta com um vestígio. Só vale se o vestígio estiver em
-   * mãos e se de fato desmentir aquela resposta.
+   * Confronta uma resposta com um vestígio.
+   *
+   * Devolve `null` quando a ação é inválida (jogo encerrado, suspeito fechado,
+   * pergunta não liberada, versão já derrubada, vestígio fora do caderno).
+   * Quando a tentativa é válida, devolve `{ sucesso }`: o vestígio pode
+   * simplesmente não desmentir aquela resposta, e aí a tentativa se gasta.
+   * Errar demais com o mesmo suspeito faz ele encerrar a conversa.
    */
   confrontar(idSuspeito, idPergunta, idVestigio) {
     if (this.encerrado) return null;
+    if (this.suspeitoFechado(idSuspeito)) return null;
 
     const suspeito = this.caso.suspeitos.find((s) => s.id === idSuspeito);
     const pergunta = suspeito?.perguntas?.find((p) => p.id === idPergunta);
     if (!pergunta) return null;
-    if (!(pergunta.contradizPor ?? []).includes(idVestigio)) return null;
+    if (!this.perguntaLiberada(idSuspeito, idPergunta)) return null;
     if (this.contradicaoDe(idSuspeito, idPergunta)) return null;
 
     const vestigio = this.recolhidos.find((v) => v.id === idVestigio);
     if (!vestigio) return null;
 
+    // Tentativa válida que não desmente nada: o suspeito ganha guarda.
+    if (!(pergunta.contradizPor ?? []).includes(idVestigio)) {
+      const falhas = (this.tentativasFalhas.get(idSuspeito) ?? 0) + 1;
+      this.tentativasFalhas.set(idSuspeito, falhas);
+      const fechou = this.suspeitoFechado(idSuspeito);
+      this.#avisar('confrontoFalhou', {
+        suspeito,
+        pergunta,
+        vestigio,
+        restantes: this.tentativasRestantes(idSuspeito),
+        fechou,
+      });
+      return { sucesso: false, restantes: this.tentativasRestantes(idSuspeito), fechou };
+    }
+
     const registro = { suspeito: idSuspeito, pergunta: idPergunta, vestigio: idVestigio };
     this.contradicoes.push(registro);
     this.respostasOuvidas.add(`${idSuspeito}:${idPergunta}`);
     this.#avisar('contradicao', { registro, suspeito, pergunta, vestigio });
-    return registro;
+    return { sucesso: true, registro, restantes: this.tentativasRestantes(idSuspeito) };
+  }
+
+  /**
+   * Junta dois vestígios numa dedução. Só vale se os dois estiverem em mãos.
+   */
+  cruzar(idCruzamento) {
+    if (this.encerrado) return null;
+    const cruzamento = (this.caso.cruzamentos ?? []).find((c) => c.id === idCruzamento);
+    if (!cruzamento) return null;
+    if (this.cruzamentos.includes(idCruzamento)) return null;
+
+    const emMaos = new Set(this.recolhidos.map((v) => v.id));
+    if (!cruzamento.exige.every((id) => emMaos.has(id))) return null;
+
+    this.cruzamentos.push(idCruzamento);
+    this.#avisar('cruzamento', { cruzamento });
+    return cruzamento;
   }
 
   /** Fecha o caso nomeando um suspeito. */
   acusar(idSuspeito) {
     if (this.encerrado) return this.veredito;
-    this.veredito = julgar(this.misterio, idSuspeito, this.recolhidos, this.contradicoes);
+    this.veredito = julgar(
+      this.misterio,
+      idSuspeito,
+      this.recolhidos,
+      this.contradicoes,
+      this.cruzamentos,
+    );
     this.encerrado = true;
     this.detetive.pararAgora();
     this.#avisar('veredito', this.veredito);
@@ -284,6 +427,8 @@ export class Jogo {
       respostas: [...this.respostasOuvidas],
       contradicoes: this.contradicoes.map((c) => ({ ...c })),
       encerrado: this.encerrado,
+      cruzamentos: [...this.cruzamentos],
+      tentativasFalhas: [...this.tentativasFalhas],
       acusado: this.veredito?.acusado?.id ?? null,
     };
   }
@@ -318,6 +463,22 @@ export class Jogo {
       return this.recolhidos.some((v) => v.id === registro.vestigio);
     });
 
+    // Confrontos errados precisam voltar: senão, recarregar a página devolveria
+    // as tentativas e o custo de errar viraria enfeite.
+    const idsSuspeitos = new Set(this.caso.suspeitos.map((s) => s.id));
+    this.tentativasFalhas = new Map(
+      (estado.tentativasFalhas ?? []).filter(
+        ([id, n]) => idsSuspeitos.has(id) && Number.isInteger(n) && n > 0,
+      ),
+    );
+
+    // Cruzamento só sobrevive se os dois vestígios voltaram para o caderno.
+    const emMaos = new Set(this.recolhidos.map((v) => v.id));
+    this.cruzamentos = (estado.cruzamentos ?? []).filter((id) => {
+      const cruzamento = (this.caso.cruzamentos ?? []).find((c) => c.id === id);
+      return cruzamento ? cruzamento.exige.every((exigido) => emMaos.has(exigido)) : false;
+    });
+
     const cena = this.cenas.get(estado.cena);
     if (cena) this.cenaAtual = cena;
 
@@ -331,7 +492,13 @@ export class Jogo {
     this.encerrado = false;
     this.veredito = null;
     if (estado.encerrado && estado.acusado) {
-      this.veredito = julgar(this.misterio, estado.acusado, this.recolhidos, this.contradicoes);
+      this.veredito = julgar(
+        this.misterio,
+        estado.acusado,
+        this.recolhidos,
+        this.contradicoes,
+        this.cruzamentos,
+      );
       this.encerrado = true;
     }
 

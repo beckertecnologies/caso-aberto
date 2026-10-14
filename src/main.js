@@ -12,13 +12,14 @@ import { Progresso } from './jogo/persistencia.js';
 import { CENA_CIDADE } from './dados/cena-cidade.js';
 import { CENA_APTO_302 } from './dados/cena-apto302.js';
 import { CENA_ESCRITORIO } from './dados/cena-escritorio.js';
+import { CENA_DELEGACIA } from './dados/cena-delegacia.js';
 import { CASO_014 } from './dados/caso-014.js';
 
 /**
  * Locais do mundo. O primeiro é onde o detetive começa: a cidade funciona como
  * praça central, e os demais são alcançados pelas portas da rua.
  */
-const CENAS = [CENA_CIDADE, CENA_APTO_302, CENA_ESCRITORIO];
+const CENAS = [CENA_CIDADE, CENA_APTO_302, CENA_ESCRITORIO, CENA_DELEGACIA];
 
 const canvas = document.getElementById('palco');
 const camera = new Camera();
@@ -156,6 +157,9 @@ function quadro(dt, tempo) {
 
 // ---------- atalhos ----------
 
+// Examinar sem mouse. Sem esta tecla, recolher e ler dependem do clique no
+// canvas, e o caso não tem como ser fechado só pelo teclado.
+entrada.aoAtalho('KeyE', () => jogo.examinarProximo());
 entrada.aoAtalho('KeyC', () => ui.alternarPainel('caderno'));
 entrada.aoAtalho('KeyF', () => ui.alternarPainel('suspeitos'));
 entrada.aoAtalho('KeyL', () => ui.abrirDeslocamento());

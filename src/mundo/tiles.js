@@ -40,6 +40,14 @@ export const OBJETOS = {
   Y: { id: 'arvore', solido: true, forma: 'arvore', rotulo: 'Árvore' },
   L: { id: 'luminaria', solido: true, forma: 'luminaria', luz: 3.4, rotulo: 'Luminária' },
 
+  W: {
+    id: 'registro',
+    solido: false,
+    forma: 'registro',
+    interacao: 'acusacao',
+    rotulo: 'Mesa de registro — formalizar a acusação',
+  },
+
   O: { id: 'contorno', solido: false, forma: 'contorno', interacao: 'corpo', rotulo: 'Marcação da vítima' },
   F: { id: 'pasta', solido: false, forma: 'pasta', interacao: 'documento', rotulo: 'Pasta da perícia' },
   J: { id: 'jornal', solido: false, forma: 'jornal', interacao: 'documento', rotulo: 'Banca de jornal' },
