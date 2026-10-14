@@ -13,16 +13,42 @@ import { readFileSync } from 'node:fs';
 let falhas = 0;
 let checagens = 0;
 
+function relatar(descricao, erro) {
+  if (!erro) {
+    console.log(`  ok   ${descricao}`);
+    return true;
+  }
+  falhas += 1;
+  console.error(`  FALHA ${descricao} — ${erro?.message ?? erro}`);
+  if (erro?.stack) console.error(erro.stack.split('\n').slice(1, 4).join('\n'));
+  return false;
+}
+
 function conferir(descricao, acao) {
   checagens += 1;
   try {
     const resultado = typeof acao === 'function' ? acao() : acao;
     if (resultado === false) throw new Error('resultado falso');
-    console.log(`  ok   ${descricao}`);
+    if (resultado instanceof Promise) {
+      // Guarda contra o erro que já aconteceu aqui: uma função async devolve uma
+      // Promise, que não é `false`, e a checagem passaria sem esperar nada.
+      throw new Error('use conferirAsync para ações assíncronas');
+    }
+    return relatar(descricao);
   } catch (erro) {
-    falhas += 1;
-    console.error(`  FALHA ${descricao} — ${erro?.message ?? erro}`);
-    if (erro?.stack) console.error(erro.stack.split('\n').slice(1, 4).join('\n'));
+    return relatar(descricao, erro);
+  }
+}
+
+/** Versão que realmente aguarda a ação antes de julgar o resultado. */
+async function conferirAsync(descricao, acao) {
+  checagens += 1;
+  try {
+    const resultado = await acao();
+    if (resultado === false) throw new Error('resultado falso');
+    return relatar(descricao);
+  } catch (erro) {
+    return relatar(descricao, erro);
   }
 }
 
@@ -150,15 +176,21 @@ const palco = porId.get('palco');
 
 conferir('o index.html declara todos os ids que o código procura', IDS.size > 20);
 
-await conferir('main.js importa sem lançar', async () => {
-  await import('../src/main.js');
-  return true;
-});
+// O import é aguardado de verdade. Quando o módulo termina de avaliar, o
+// main.js já chamou requestAnimationFrame, então não há corrida de tempo aqui.
+const importou = await conferirAsync('main.js importa sem lançar', () => import('../src/main.js'));
 
-// O import é assíncrono acima; garante que terminou antes de seguir.
-await new Promise((r) => setTimeout(r, 0));
+if (!importou) {
+  console.error('\nSem carregar o main.js não há o que medir. Interrompendo.');
+  process.exit(1);
+}
 
 conferir('o laço pediu o primeiro quadro', () => aoQuadro !== null);
+
+if (!aoQuadro) {
+  console.error('\nO laço nunca pediu um quadro, então os testes seguintes não diriam nada.');
+  process.exit(1);
+}
 conferir('primeiro quadro desenha sem lançar', () => rodarQuadros(1) ?? true);
 conferir('sessenta quadros seguidos sem lançar', () => rodarQuadros(60) ?? true);
 
