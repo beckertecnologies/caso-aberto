@@ -206,8 +206,8 @@ async function criarCena(corpo) {
   if (typeof id !== 'string' || !/^[a-z0-9-]+$/.test(id)) {
     throw Object.assign(new Error('Id deve ter só minúsculas, números e hífen'), { codigo: 400 });
   }
-  const l = Math.max(8, Math.min(200, Number(largura) || 24));
-  const a = Math.max(8, Math.min(200, Number(altura) || 20));
+  const l = Math.max(8, Math.min(1000, Number(largura) || 24));
+  const a = Math.max(8, Math.min(1000, Number(altura) || 20));
 
   const arquivo = join(PASTA_CENAS, `cena-${id}.js`);
   if (await stat(arquivo).catch(() => null)) {

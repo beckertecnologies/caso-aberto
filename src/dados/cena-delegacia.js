@@ -1,67 +1,64 @@
-// DELEGACIA DO 4º DISTRITO — onde o caso é formalizado.
+// Delegacia de Polícia — criado por `node tools/montar-locais.mjs`.
 //
-// Local de serviço: não há vestígio para recolher aqui. O que existe é a
-// papelada do inquérito e a mesa de registro, onde a acusação é assinada.
-// Por isso a cena não tem nenhum ponto `*` — o gerador simplesmente a ignora
-// ao plantar vestígios.
-//
-// CHÃO:            OBJETOS:
-//   (espaço) vazio   .  nada          V  arquivo
-//   t  ladrilho      #  parede        H  banco
-//   p  calçada       d  passagem      P  vaso
-//                    K  balcão        F  pasta do inquérito
-//                    D  escrivaninha  W  mesa de registro (formaliza a acusação)
-//                    L  luminária     1  passagem para a rua (ver `ligacoes`)
-//                                     X  onde o detetive chega
+// Esqueleto visitável: quatro paredes, piso, ponto de partida e a porta de
+// volta para a cidade. O recheio é feito no editor.
 
 export const CENA_DELEGACIA = {
   id: 'delegacia',
-  nome: 'Delegacia do 4º Distrito',
-  endereco: 'Praça das Acácias, sem número',
+  nome: 'Delegacia de Polícia',
+  endereco: '4º Distrito',
 
-  ligacoes: {
-    1: { para: 'cidade', rotulo: 'Voltar para a praça' },
-  },
+  ligacoes: {},
+
+  decoracoes: [],
+
+  passagens: [
+    { gx: 13, gy: 18, para: 'cidade', rotulo: 'Voltar para a cidade' },
+  ],
 
   chao: [
-    '                          ',
-    '                          ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '  tttttttttttttttttttttt  ',
-    '          pppppp          ',
-    '          pppppp          ',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
+    'tttttttttttttttttttttttttt',
   ],
 
   objetos: [
-    '..........................',
-    '..........................',
-    '..######################..',
-    '..#KKKK......L#.VVV....#..',
-    '..#...........#........#..',
-    '..#......D....#......V.#..',
-    '..#...........d........#..',
-    '..#........F..#....F...#..',
-    '..#...........#........#..',
-    '..#####d##########d#####..',
-    '..#....................#..',
-    '..#.........W..........#..',
-    '..#....................#..',
-    '..#...H...........H....#..',
-    '..#P........X.........P#..',
-    '..##########d###########..',
-    '............1.............',
-    '..........................',
+    '##########################',
+    '#........................#',
+    '#........................#',
+    '#........................#',
+    '#........................#',
+    '#............*...........#',
+    '#...........*............#',
+    '#...........*............#',
+    '#.........*..F...........#',
+    '#........................#',
+    '#............X...........#',
+    '#........................#',
+    '#...........F............#',
+    '#.........*..............#',
+    '#...............*........#',
+    '#........................#',
+    '#........................#',
+    '#........................#',
+    '#........................#',
+    '#############.############',
   ],
 };

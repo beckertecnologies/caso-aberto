@@ -22,9 +22,16 @@ function estimativa(ax, ay, bx, by) {
 
 /**
  * Caminho de (origem) até (destino), sem incluir a origem.
- * @returns {{x:number,y:number}[]} vazio quando não há rota
+ *
+ * `maxExpansoes` limita quantos nós o A* abre antes de desistir. O padrão cobre
+ * o mapa inteiro (detetive precisa alcançar qualquer canto). Para quem só anda
+ * perto — os transeuntes —, um teto baixo evita que uma busca por um destino
+ * inalcançável varra uma cidade de centenas de milhares de tiles e trave o
+ * quadro. Ao estourar o teto, devolve rota vazia, como se não houvesse caminho.
+ *
+ * @returns {{x:number,y:number}[]} vazio quando não há rota (ou o teto estourou)
  */
-export function buscarCaminho(cena, origem, destino) {
+export function buscarCaminho(cena, origem, destino, maxExpansoes = Infinity) {
   const inicioX = Math.round(origem.gx);
   const inicioY = Math.round(origem.gy);
   const fimX = Math.round(destino.gx);
@@ -41,7 +48,8 @@ export function buscarCaminho(cena, origem, destino) {
 
   custo.set(chave(inicioX, inicioY), 0);
 
-  let limite = cena.largura * cena.altura * 8; // trava de segurança
+  // Trava dura (mapa inteiro) e teto opcional de expansões, o que vier primeiro.
+  let limite = Math.min(cena.largura * cena.altura * 8, maxExpansoes);
 
   while (abertos.length && limite > 0) {
     limite -= 1;

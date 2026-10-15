@@ -10,16 +10,19 @@ import { Acervo } from './render/acervo.js';
 import { VISUAL } from './dados/visual.js';
 import { Interface } from './ui/interface.js';
 import { Jogo } from './jogo/jogo.js';
+import { Povo } from './jogo/povo.js';
 import { Progresso } from './jogo/persistencia.js';
 // A lista de locais mora em `dados/cenas.js` para o `npm run check` poder lê-la
 // sem passar por este arquivo, que depende de canvas e janela.
 import { CENAS } from './dados/cenas.js';
-import { CASO_014 } from './dados/caso-014.js';
+import { CASO_RUTTERFORT as CASO_014 } from './dados/caso-rutterfort.js';
 
 const canvas = document.getElementById('palco');
 const camera = new Camera();
 const acervo = new Acervo(VISUAL);
 const renderizador = new Renderizador(canvas, camera, acervo);
+// Minimapa no canto, ligado no jogo (o editor deixa oculto por padrão).
+renderizador.modoMinimapa = 'canto';
 const entrada = new Entrada(canvas);
 const progresso = new Progresso();
 
@@ -31,6 +34,8 @@ acervo.carregar(() => {
 
 /** @type {Jogo} */
 let jogo;
+/** @type {Povo|null} A cidade viva do pré-crime; nulo depois do crime ou em jogo salvo. */
+let povo = null;
 let tileSobMouse = null;
 let alvoDestacado = null;
 /** Detecta a borda de subida do bloqueio, para parar a caminhada uma única vez. */
@@ -90,19 +95,44 @@ function iniciar(semente, estadoSalvo = null) {
   alvoDestacado = null;
   bloqueadoNoQuadroAnterior = false;
 
+  // Encerra qualquer multidão anterior.
+  povo = null;
+  renderizador.povo = null;
+  renderizador.localDoCrime = null;
+
   if (retomado) {
+    // Jogo salvo: o crime já aconteceu. Aponta direto para a cena do corpo.
+    renderizador.localDoCrime = jogo.cenaDoCorpo;
     ui.aviso(
       'Investigação retomada',
       `Você estava em ${jogo.cenaAtual.nome}, com ${jogo.recolhidos.length} de ${jogo.misterio.total} vestígios recolhidos. ` +
         'Para começar um caso novo, use "Nova investigação".',
     );
   } else {
+    // Partida nova: começa no pré-crime. A cidade vive por 30s, a vítima e os
+    // suspeitos passeiam no meio do povo, e só então o assassinato acontece.
+    jogo.iniciarPreCrime();
+    povo = new Povo(jogo.cenaAtual, jogo.caso, jogo.semente);
+    renderizador.povo = povo;
+
+    povo.escutar('crime', ({ local }) => {
+      jogo.dispararCrime();
+      renderizador.localDoCrime = local;
+      const cena = jogo.cenas.get(local);
+      progresso.salvar(jogo);
+      ui.aviso(
+        'Um corpo foi encontrado',
+        `${jogo.caso.vitima?.nome ?? 'A vítima'} foi encontrada morta em ${cena?.nome ?? local}. ` +
+          'A investigação começa agora: vá até o local do crime, procure a marcação da vítima e as ' +
+          'pastas da perícia, e confronte os depoimentos com o que achar. O mapa mostra onde o corpo está.',
+      );
+    });
+
     progresso.salvar(jogo);
     ui.aviso(
       jogo.caso.titulo,
-      `${jogo.caso.resumo} Você começa na rua: as portas iluminadas levam ao edifício e à transportadora. ` +
-        `Há ${jogo.misterio.total} vestígios espalhados pelos locais. ` +
-        'Procure a marcação da vítima e as pastas da perícia, e confronte os depoimentos com o que achar.',
+      `${jogo.caso.resumo} A cidade está em movimento e ninguém sabe o que está por vir. ` +
+        'Ande à vontade e observe: em instantes algo vai acontecer. Só então a investigação começa.',
     );
   }
 }
@@ -140,19 +170,36 @@ function quadro(dt, tempo) {
 
   jogo.atualizar(dt, entrada.direcaoTeclado());
 
+  // A cidade continua viva o jogo todo: o povo anda antes e depois do crime,
+  // vivendo a vida. Só a vítima fica caída. O relógio do pré-crime corre dentro
+  // do próprio `atualizar`, então entrar num prédio não o congela.
+  if (povo) povo.atualizar(dt);
+
   const foco = posicaoDaCamera();
   camera.seguir(foco.x, foco.y, dt);
 
   tileSobMouse = tileDoPonteiro();
   alvoDestacado = tileSobMouse ? jogo.alvoEm(tileSobMouse.gx, tileSobMouse.gy) : null;
 
-  const rotulo = alvoDestacado
-    ? alvoDestacado.tipo === 'vestigio'
-      ? 'Vestígio — clique para recolher'
-      : `${alvoDestacado.rotulo} — clique para examinar`
-    : '';
+  // Passa a posição de tela do ponteiro para o renderizador, que usa no mapa
+  // grande para mostrar a legenda do lugar sob o mouse.
+  renderizador.ponteiro = entrada.ponteiro.dentro
+    ? { x: entrada.ponteiro.x, y: entrada.ponteiro.y }
+    : null;
+
+  // No pré-crime, a linha de dica vira a contagem regressiva para o crime.
+  let rotulo;
+  if (povo && povo.fase === 'pre-crime') {
+    rotulo = `A cidade vive... algo vai acontecer em ${povo.segundosRestantes()}s`;
+  } else {
+    rotulo = alvoDestacado
+      ? alvoDestacado.tipo === 'vestigio'
+        ? 'Vestígio — clique para recolher'
+        : `${alvoDestacado.rotulo} — clique para examinar`
+      : '';
+  }
   ui.definirAlvo(rotulo);
-  canvas.style.cursor = alvoDestacado ? 'pointer' : 'crosshair';
+  canvas.style.cursor = alvoDestacado && !(povo && povo.fase === 'pre-crime') ? 'pointer' : 'crosshair';
 
   renderizador.desenhar(jogo, tileSobMouse, alvoDestacado, tempo);
 }
@@ -169,6 +216,11 @@ entrada.aoAtalho('KeyG', () => ui.abrirAcusacao());
 entrada.aoAtalho('KeyN', () => {
   progresso.limpar();
   iniciar(sementeAleatoria());
+});
+// Alterna o minimapa entre pequeno (canto) e grande (mapa inteiro). No jogo ele
+// está sempre ativo: o M só muda o tamanho, nunca desliga.
+entrada.aoAtalho('KeyM', () => {
+  renderizador.modoMinimapa = renderizador.modoMinimapa === 'expandido' ? 'canto' : 'expandido';
 });
 
 // A construção do mundo mora numa aplicação própria: `npm run editor`.

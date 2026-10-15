@@ -49,7 +49,7 @@ async function carregarModelo() {
 
 const { MundoEditavel, copia: temporario } = await carregarModelo();
 const { CENA_CIDADE } = await import('../src/dados/cena-cidade.js');
-const { CASO_014 } = await import('../src/dados/caso-014.js');
+const { CASO_RUTTERFORT: CASO_014 } = await import('../src/dados/caso-rutterfort.js');
 const { VISUAL } = await import('../src/dados/visual.js');
 
 const base = () => ({
@@ -169,17 +169,208 @@ secao('Editor: altura das peças');
 // como achar o tile, e o `*` é desenhado invisível no jogo. Cada motivo tem uma
 // correção diferente, então a mensagem precisa nomear o motivo.
 
+// ---------- balde e limpar ----------
+//
+// Pintar e apagar área grande tile a tile é inviável num mapa de centenas de
+// milhares. O balde preenche a região conectada; o limpar esvazia tudo. Os dois
+// entram no histórico.
+
+secao('Editor: balde e limpar tudo');
+
+{
+  const base = () => ({
+    id: 'teste',
+    nome: 'Teste',
+    endereco: '',
+    externo: true,
+    ligacoes: {},
+    decoracoes: [],
+    passagens: [{ gx: 1, gy: 1, para: 'cidade', rotulo: 'volta' }],
+    // 6x4 de calçada, com um bloco 2x2 de asfalto no canto.
+    chao: ['pppppp', 'ppaapp', 'ppaapp', 'pppppp'],
+    objetos: ['......', '......', '......', '.X....'],
+  });
+
+  conferir('balde troca a região conectada do mesmo material', () => {
+    const m = new MundoEditavel(base());
+    m.balde('chao', 0, 0, 'g'); // o mar de calçada vira grama
+    const chao = m.dados.chao.join('');
+    // Toda a calçada virou grama; o bloco de asfalto no meio permaneceu.
+    return !chao.includes('p') && chao.includes('a') && chao.includes('g');
+  });
+
+  conferir('o balde não vaza para material diferente', () => {
+    const m = new MundoEditavel(base());
+    m.balde('chao', 2, 1, 'g'); // clica no asfalto do meio
+    const linhas = m.dados.chao;
+    // Só os 4 tiles de asfalto viraram grama; a calçada em volta ficou.
+    const gramas = linhas.join('').split('').filter((c) => c === 'g').length;
+    return gramas === 4;
+  });
+
+  conferir('balde no mesmo caractere não faz nada', () => {
+    const m = new MundoEditavel(base());
+    const r = m.balde('chao', 0, 0, 'p');
+    return r.igual === true;
+  });
+
+  conferir('desfazer traz a região de volta', () => {
+    const m = new MundoEditavel(base());
+    const antes = m.dados.chao.join('');
+    m.balde('chao', 0, 0, 'g');
+    m.desfazer();
+    return m.dados.chao.join('') === antes;
+  });
+
+  conferir('limpar tudo esvazia e mantém a partida', () => {
+    const m = new MundoEditavel(base());
+    m.limparTudo();
+    const cena = m.cena;
+    const temParede = m.dados.objetos.join('').includes('#');
+    const temPassagem = m.dados.passagens.length > 0;
+    return (
+      !temParede &&
+      !temPassagem &&
+      m.dados.decoracoes.length === 0 &&
+      cena.andavel(cena.inicio.gx, cena.inicio.gy)
+    );
+  });
+
+  conferir('desfazer traz tudo de volta depois de limpar', () => {
+    const m = new MundoEditavel(base());
+    m.limparTudo();
+    m.desfazer();
+    return m.dados.passagens.length === 1 && m.dados.chao.join('').includes('a');
+  });
+}
+
+// ---------- pincel grosso e marca de prédio (modo cidade) ----------
+
+secao('Editor: modo cidade');
+
+{
+  const base = () => ({
+    id: 'teste-cidade',
+    nome: 'Teste',
+    endereco: '',
+    externo: true,
+    ligacoes: {},
+    decoracoes: [],
+    passagens: [{ gx: 1, gy: 1, para: 'cidade', rotulo: 'volta' }],
+    chao: Array.from({ length: 15 }, () => 'g'.repeat(15)),
+    objetos: Array.from({ length: 15 }, (_, y) => (y === 7 ? `${'.'.repeat(7)}X${'.'.repeat(7)}` : '.'.repeat(15))),
+  });
+
+  conferir('pincel grosso pinta um disco', () => {
+    const m = new MundoEditavel(base());
+    m.pincelar('chao', 7, 7, 'a', 3);
+    // O centro e os vizinhos imediatos viraram asfalto; o canto distante não.
+    return m.dados.chao[7][7] === 'a' && m.dados.chao[7][4] === 'a' && m.dados.chao[0][0] === 'g';
+  });
+
+  conferir('pincel grosso é redondo, não quadrado', () => {
+    const m = new MundoEditavel(base());
+    m.pincelar('chao', 7, 7, 'a', 3);
+    // O canto do quadrado 3x3 (dx=3,dy=3) está fora do raio 3, então fica grama.
+    return m.dados.chao[10][10] === 'g';
+  });
+
+  conferir('pincel raio 0 pinta um tile só', () => {
+    const m = new MundoEditavel(base());
+    m.pincelar('chao', 7, 7, 'a', 0);
+    return m.dados.chao[7][7] === 'a' && m.dados.chao[7][6] === 'g';
+  });
+
+  conferir('água é material válido e não andável', () => {
+    const m = new MundoEditavel(base());
+    m.pincelar('chao', 7, 7, '~', 1);
+    const cena = m.cena;
+    return cena.chao[7][7]?.material === 'agua' && cena.andavel(7, 7) === false;
+  });
+
+  conferir('a marca de prédio entra como marcador, sem bloquear', () => {
+    const m = new MundoEditavel(base());
+    m.pintar('objetos', 3, 3, 'M');
+    const cena = m.cena;
+    const temMarca = cena.marcasPredio.some((p) => p.gx === 3 && p.gy === 3);
+    return temMarca && cena.andavel(3, 3) === true;
+  });
+
+  conferir('a cena coleta todas as marcas de prédio', () => {
+    const m = new MundoEditavel(base());
+    m.pintar('objetos', 2, 2, 'M');
+    m.pintar('objetos', 10, 4, 'M');
+    m.pintar('objetos', 6, 11, 'M');
+    return m.cena.marcasPredio.length === 3;
+  });
+
+  conferir('desfazer remove a pincelada grossa inteira', () => {
+    const m = new MundoEditavel(base());
+    const antes = m.dados.chao.join('');
+    m.pincelar('chao', 7, 7, 'a', 5);
+    m.desfazer();
+    return m.dados.chao.join('') === antes;
+  });
+
+  conferir('estrada reta liga os dois pontos', () => {
+    const m = new MundoEditavel(base());
+    m.estrada('chao', { gx: 1, gy: 7 }, { gx: 13, gy: 7 }, 'a', 0);
+    // Toda a linha horizontal virou asfalto.
+    let ok = true;
+    for (let x = 1; x <= 13; x += 1) if (m.dados.chao[7][x] !== 'a') ok = false;
+    return ok;
+  });
+
+  conferir('estrada diagonal não deixa buraco', () => {
+    const m = new MundoEditavel(base());
+    m.estrada('chao', { gx: 1, gy: 1 }, { gx: 13, gy: 13 }, 'a', 1);
+    // Com raio 1 a diagonal fica contínua: cada passo da linha pinta um disco.
+    // Confere que não há tile de grama cercado por asfalto no meio do traço.
+    let pintados = 0;
+    for (let y = 0; y < 15; y += 1) for (let x = 0; x < 15; x += 1) if (m.dados.chao[y][x] === 'a') pintados += 1;
+    return pintados >= 13; // pelo menos um por passo da diagonal
+  });
+
+  conferir('estrada com largura cobre mais de um tile', () => {
+    const m = new MundoEditavel(base());
+    m.estrada('chao', { gx: 2, gy: 7 }, { gx: 12, gy: 7 }, 'a', 1);
+    // Raio 1: a faixa tem três tiles de altura no meio do traço.
+    return m.dados.chao[6][7] === 'a' && m.dados.chao[7][7] === 'a' && m.dados.chao[8][7] === 'a';
+  });
+
+  conferir('desfazer remove a estrada inteira', () => {
+    const m = new MundoEditavel(base());
+    const antes = m.dados.chao.join('');
+    m.estrada('chao', { gx: 1, gy: 1 }, { gx: 13, gy: 13 }, 'a', 2);
+    m.desfazer();
+    return m.dados.chao.join('') === antes;
+  });
+}
+
 secao('Editor: a validação explica o problema');
 
 {
+  // Cena própria com um ponto de vestígio, independente da cidade — a cidade é
+  // esqueleto enquanto o roteiro novo não chega, e não tem `*`.
+  const comPontoBase = () => ({
+    id: 'teste-validacao',
+    nome: 'Teste',
+    endereco: '',
+    externo: true,
+    ligacoes: {},
+    decoracoes: [],
+    passagens: [{ gx: 1, gy: 1, para: 'cidade', rotulo: 'volta' }],
+    chao: ['pppppppp', 'pppppppp', 'pppppppp', 'pppppppp', 'pppppppp'],
+    objetos: ['........', '...X....', '........', '.....*..', '........'],
+  });
   const comPonto = () => {
-    const mundo = new MundoEditavel(base());
+    const mundo = new MundoEditavel(comPontoBase());
     const ponto = mundo.cena.pontosDeVestigio[0];
-    if (!ponto) throw new Error('a cidade não tem ponto de vestígio');
+    if (!ponto) throw new Error('a cena de teste não tem ponto de vestígio');
     return { mundo, ponto };
   };
 
-  conferir('a cidade tem ponto de vestígio para o teste', () => comPonto().ponto !== undefined);
+  conferir('a cena de teste tem ponto de vestígio', () => comPonto().ponto !== undefined);
 
   conferir('peça sólida sobre o ponto: diz qual peça é', () => {
     const { mundo, ponto } = comPonto();

@@ -11,7 +11,7 @@
 
 import { Cena } from '/src/mundo/cena.js';
 import { buscarCaminho } from '/src/mundo/caminho.js';
-import { nivelValido } from '/src/core/iso.js';
+import { nivelValido, LADO_MAXIMO } from '/src/core/iso.js';
 
 const LIMITE_RETRATOS = 50;
 
@@ -124,6 +124,86 @@ export class MundoEditavel {
     });
   }
 
+  /**
+   * Pinta um disco de tiles de raio `raio` em volta de (gx,gy), numa pincelada.
+   *
+   * É o pincel grosso do modo cidade: desenhar grama, estrada e mar em áreas
+   * grandes com um traço só, em vez de tile a tile. Raio 0 é um tile — igual ao
+   * pincel normal. Um disco, não um quadrado, para a borda da pincelada ser
+   * redonda e a costa não sair serrilhada.
+   */
+  pincelar(camada, gx, gy, caractere, raio = 0) {
+    if (raio <= 0) return this.pintar(camada, gx, gy, caractere);
+    return this.#aplicar(() => {
+      for (let dy = -raio; dy <= raio; dy += 1) {
+        const y = gy + dy;
+        if (y < 0 || y >= this.altura) continue;
+        const linha = this.dados[camada][y].split('');
+        for (let dx = -raio; dx <= raio; dx += 1) {
+          const x = gx + dx;
+          if (x < 0 || x >= this.largura) continue;
+          if (dx * dx + dy * dy > raio * raio) continue;
+          linha[x] = caractere;
+        }
+        this.dados[camada][y] = linha.join('');
+      }
+    });
+  }
+
+  /**
+   * Traça uma estrada reta de A a B, com a espessura de um pincel de raio `raio`.
+   *
+   * É a ferramenta de rua clique-a-clique: marca o começo, leva o mouse e marca
+   * o fim — a estrada sai inteira de uma vez. Por dentro é uma linha de
+   * Bresenham, e cada ponto da linha vira um disco, para a rua ter largura e as
+   * curvas (feitas de vários segmentos) não terem buraco nas junções.
+   */
+  estrada(camada, a, b, caractere, raio = 1) {
+    return this.#aplicar(() => {
+      const grade = this.dados[camada].map((l) => l.split(''));
+      const disco = (cx, cy) => {
+        for (let dy = -raio; dy <= raio; dy += 1) {
+          const y = cy + dy;
+          if (y < 0 || y >= this.altura) continue;
+          for (let dx = -raio; dx <= raio; dx += 1) {
+            const x = cx + dx;
+            if (x < 0 || x >= this.largura) continue;
+            if (dx * dx + dy * dy > raio * raio) continue;
+            grade[y][x] = caractere;
+          }
+        }
+      };
+
+      let x0 = a.gx;
+      let y0 = a.gy;
+      const x1 = b.gx;
+      const y1 = b.gy;
+      const dx = Math.abs(x1 - x0);
+      const dy = Math.abs(y1 - y0);
+      const sx = x0 < x1 ? 1 : -1;
+      const sy = y0 < y1 ? 1 : -1;
+      let erro = dx - dy;
+      // Teto de passos: um clique errado em cantos opostos de um mapa gigante
+      // não deve rodar para sempre.
+      let n = 0;
+      const limite = (dx + dy) * 2 + 10;
+      for (;;) {
+        disco(x0, y0);
+        if ((x0 === x1 && y0 === y1) || n++ > limite) break;
+        const e2 = 2 * erro;
+        if (e2 > -dy) {
+          erro -= dy;
+          x0 += sx;
+        }
+        if (e2 < dx) {
+          erro += dx;
+          y0 += sy;
+        }
+      }
+      this.dados[camada] = grade.map((l) => l.join(''));
+    });
+  }
+
   /** Pinta um retângulo inteiro de uma vez, inclusive as bordas. */
   retangulo(camada, a, b, caractere) {
     const x0 = Math.max(0, Math.min(a.gx, b.gx));
@@ -137,6 +217,70 @@ export class MundoEditavel {
         for (let gx = x0; gx <= x1; gx += 1) linha[gx] = caractere;
         this.dados[camada][gy] = linha.join('');
       }
+    });
+  }
+
+  /**
+   * Balde: troca todos os tiles conectados que têm o mesmo caractere do tile
+   * clicado pelo novo caractere. É o que falta para pintar ou apagar uma região
+   * inteira sem clicar tile a tile — essencial num mapa de centenas de milhares.
+   *
+   * A conexão é por vizinho ortogonal, dentro da camada escolhida. Limita a
+   * área mexida a um teto, para um clique errado num mar de tiles iguais não
+   * reescrever o mapa inteiro sem querer (o desfazer cobre, mas é susto à toa).
+   */
+  balde(camada, gx, gy, caractere, teto = 200000) {
+    if (!this.dentro(gx, gy)) return { ok: false, erro: 'fora do mapa' };
+    const alvo = this.dados[camada][gy][gx];
+    if (alvo === caractere) return { ok: true, igual: true };
+
+    return this.#aplicar(() => {
+      // Trabalha numa cópia em array de arrays, por desempenho: fatiar string a
+      // cada troca seria O(largura) por tile.
+      const grade = this.dados[camada].map((l) => l.split(''));
+      const fila = [[gx, gy]];
+      grade[gy][gx] = caractere;
+      let n = 1;
+      while (fila.length && n < teto) {
+        const [x, y] = fila.pop();
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= this.largura || ny >= this.altura) continue;
+          if (grade[ny][nx] !== alvo) continue;
+          grade[ny][nx] = caractere;
+          n += 1;
+          fila.push([nx, ny]);
+        }
+      }
+      this.dados[camada] = grade.map((l) => l.join(''));
+    });
+  }
+
+  /**
+   * Limpa o mapa inteiro de volta ao vazio: chão em branco, objetos em branco,
+   * decoração e passagens zeradas. O ponto de partida é recolocado no centro,
+   * senão a cena não monta.
+   *
+   * É a saída para "quero refazer do zero" sem apagar tile a tile. Entra no
+   * histórico, então um desfazer traz tudo de volta.
+   */
+  limparTudo() {
+    return this.#aplicar(() => {
+      const l = this.largura;
+      this.dados.chao = this.dados.chao.map(() => ' '.repeat(l));
+      this.dados.objetos = this.dados.objetos.map(() => '.'.repeat(l));
+      this.dados.decoracoes = [];
+      this.dados.passagens = [];
+      const mx = Math.floor(l / 2);
+      const my = Math.floor(this.altura / 2);
+      // Precisa de chão pisável sob o X, senão a partida fica bloqueada.
+      const chao = this.dados.chao[my].split('');
+      chao[mx] = 'p';
+      this.dados.chao[my] = chao.join('');
+      const obj = this.dados.objetos[my].split('');
+      obj[mx] = 'X';
+      this.dados.objetos[my] = obj.join('');
     });
   }
 
@@ -352,8 +496,8 @@ export class MundoEditavel {
 
   /** Leva o mapa a um tamanho exato, crescendo ou cortando à direita e abaixo. */
   redimensionar(largura, altura) {
-    const l = Math.max(8, Math.min(300, Math.floor(largura)));
-    const a = Math.max(8, Math.min(300, Math.floor(altura)));
+    const l = Math.max(8, Math.min(LADO_MAXIMO, Math.floor(largura)));
+    const a = Math.max(8, Math.min(LADO_MAXIMO, Math.floor(altura)));
     const resultado = { ok: true };
 
     if (l > this.largura) this.expandir('direita', l - this.largura);

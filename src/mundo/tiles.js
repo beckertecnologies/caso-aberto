@@ -78,6 +78,20 @@ export const CHAO = {
     junta: '#141d12',
   },
 
+  // Mar. Não é andável: cerca a ilha e o detetive não pisa nele. Diferente do
+  // vazio (concreto escuro), este tem cor de água, para a borda da ilha ler como
+  // litoral e não como "fim do desenho".
+  '~': {
+    id: 'agua',
+    andavel: false,
+    material: 'agua',
+    base: '#1c3a52',
+    claro: '#2f5f80',
+    escuro: '#142a3d',
+    espuma: '#9fc4d8',
+    junta: '#102235',
+  },
+
   // Variantes pintadas: mesmo material, mas `semTextura` manda ignorar o
   // acervo de imagens e usar sempre a pintura procedural. Servem para misturar
   // os dois acabamentos no mesmo mapa — expandir a praça com grama desenhada
@@ -182,6 +196,11 @@ export const OBJETOS = {
 
   '*': { id: 'ponto', solido: false, forma: null, marcador: 'vestigio' },
   X: { id: 'entrada', solido: false, forma: null, marcador: 'inicio' },
+
+  // Marca de "aqui vai um prédio", posta no modo cidade. Não é prédio: é um
+  // alfinete no mapa. Uma ferramenta posterior lê essas marcas e distribui as
+  // cenas nelas. Não é sólido para o detetive poder pisar enquanto é só marca.
+  M: { id: 'marca-predio', solido: false, forma: null, marcador: 'predio' },
 };
 
 /** Os caracteres que representam passagem entre locais. */

@@ -25,6 +25,7 @@ import { CASO_014 } from '../src/dados/caso-014.js';
 // atende `/src/...` a partir da raiz do projeto — os módulos do jogo. Com os
 // dois chamados `src`, o import do editor caía no lugar errado e quebrava tudo.
 import { MundoEditavel } from './nucleo/mundo-editavel.js';
+import { Referencia } from './nucleo/referencia.js';
 import {
   GRUPOS,
   ORIENTACOES,
@@ -67,6 +68,8 @@ const FERRAMENTAS = [
   { id: 'retangulo', rotulo: 'Retângulo', tecla: '2' },
   { id: 'predio', rotulo: 'Prédio', tecla: '3' },
   { id: 'borracha', rotulo: 'Borracha', tecla: '4' },
+  { id: 'balde', rotulo: 'Balde', tecla: '5' },
+  { id: 'estrada', rotulo: 'Estrada', tecla: '6' },
 ];
 
 const CAMADAS = [
@@ -102,6 +105,9 @@ renderizador.mostrarGrade = true;
 // editor eles precisam aparecer, senão dá para construir em cima sem perceber.
 renderizador.mostrarMarcadores = true;
 
+// Papel manteiga: imagem de referência por cima do mapa, para calcar as ruas.
+const referencia = new Referencia(camera, canvas);
+
 /** Também exportado para a fumaça do editor. Ver `renderizador` acima. */
 export const estado = {
   /** @type {MundoEditavel|null} */
@@ -114,6 +120,14 @@ export const estado = {
   grupo: 'todos',
   termo: '',
   solido: true,
+  /** Diâmetro do pincel em tiles. 1 = um tile; mais que isso pinta em bloco. */
+  tamanhoPincel: 1,
+  /** Ponto inicial da estrada, enquanto o segundo clique não veio. */
+  inicioEstrada: null,
+  /** Modo de ajuste da referência: quando ligado, o mouse mexe na imagem. */
+  ajustandoReferencia: false,
+  /** Alça da referência sendo arrastada, ou null. */
+  alcaReferencia: null,
   /** Altura em que a próxima peça é colocada. F sobe, V desce. */
   nivel: 0,
   /** Modelo escolhido, sem a orientação: `frm_roofCorner`. */
@@ -242,15 +256,26 @@ function enquadrar() {
   if (!mundo) return;
   const centro = gradeParaMundo((mundo.largura - 1) / 2, (mundo.altura - 1) / 2);
   camera.fixar(centro.x, centro.y);
+  camera.zoom = Math.min(2, zoomParaCaber(mundo));
+  mostrarZoom();
+}
 
+/**
+ * Zoom em que o mapa inteiro cabe na tela, com uma folga nas bordas.
+ *
+ * É o piso do afastamento: antes o mínimo era 0.25 fixo, o que numa ilha de mil
+ * tiles mostrava só um pedacinho e não deixava recuar o bastante para ver tudo.
+ * Agora o limite vem do tamanho do mapa, então sempre dá para enquadrar a ilha
+ * inteira — e nunca afastar além disso, que só mostraria vazio.
+ */
+function zoomParaCaber(mundo) {
   const larguraMundo = (mundo.largura + mundo.altura) * (LARGURA_TILE / 2);
   const alturaMundo = (mundo.largura + mundo.altura) * (ALTURA_TILE / 2);
   const folga = 1.1;
-  camera.zoom = Math.max(
-    0.25,
-    Math.min(2, Math.min(canvas.clientWidth / (larguraMundo * folga), canvas.clientHeight / (alturaMundo * folga))),
+  return Math.min(
+    canvas.clientWidth / (larguraMundo * folga),
+    canvas.clientHeight / (alturaMundo * folga),
   );
-  mostrarZoom();
 }
 
 function mostrarZoom() {
@@ -662,7 +687,20 @@ function aplicarNoTile(tile) {
 
   const caractere =
     estado.ferramenta === 'borracha' ? vazioDaCamada() : estado.pincel[estado.camada];
-  relatar(mundo.pintar(estado.camada, tile.gx, tile.gy, caractere));
+
+  // Balde: preenche a região conectada de uma vez. Vale para chão e objetos; na
+  // decoração e na passagem não faz sentido (são listas, não matriz).
+  if (estado.ferramenta === 'balde') {
+    const r = mundo.balde(estado.camada, tile.gx, tile.gy, caractere);
+    if (r.ok === false) avisar(r.erro, 'ruim');
+    return;
+  }
+
+  // Pincel grosso: raio em tiles vem de `tamanhoPincel` (diâmetro). Pintar um
+  // disco é o que torna possível desenhar grama e estrada em áreas grandes sem
+  // clicar tile a tile.
+  const raio = Math.floor((estado.tamanhoPincel - 1) / 2);
+  relatar(mundo.pincelar(estado.camada, tile.gx, tile.gy, caractere, raio));
 }
 
 function relatar(resultado) {
@@ -693,8 +731,26 @@ function concluirArea(fim) {
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
+/** Posição do ponteiro em coordenadas de mundo. */
+function mundoDoEvento(evento) {
+  const area = canvas.getBoundingClientRect();
+  return camera.telaParaMundo(evento.clientX - area.left, evento.clientY - area.top);
+}
+
 canvas.addEventListener('pointerdown', (evento) => {
   canvas.setPointerCapture(evento.pointerId);
+
+  // Ajuste da referência tem prioridade: com o modo ligado, o clique agarra uma
+  // alça (canto) ou o corpo da imagem, em vez de pintar o mapa.
+  if (estado.ajustandoReferencia && referencia.temImagem && evento.button === 0) {
+    const m = mundoDoEvento(evento);
+    const raio = 8 / camera.zoom;
+    estado.alcaReferencia = referencia.alcaEm(m.x, m.y, raio);
+    if (estado.alcaReferencia) {
+      estado.ancoraMundo = m;
+      return;
+    }
+  }
 
   // Botão direito é conta-gotas. A vista se move com o botão do meio ou com
   // Shift arrastando — o direito rendia mais como "pegar isto aqui", que é a
@@ -712,8 +768,35 @@ canvas.addEventListener('pointerdown', (evento) => {
   }
 
   const tile = tileDoEvento(evento);
+  // Balde na camada de passagem/decoração não existe: cai no pincel.
+  if (
+    estado.ferramenta === 'balde' &&
+    (estado.camada === 'passagem' || estado.camada === 'decoracao')
+  ) {
+    avisar('O balde vale para Chão e Objetos. Aqui use o pincel.', 'ruim');
+    return;
+  }
   if (estado.ferramenta === 'retangulo' || estado.ferramenta === 'predio') {
     estado.inicioArea = tile;
+    return;
+  }
+
+  // Estrada é clica-move-clica, não arrasta. O primeiro clique fixa o começo; o
+  // segundo traça o trecho e já vira começo do próximo, para encadear curvas.
+  if (estado.ferramenta === 'estrada') {
+    if (estado.camada !== 'chao' && estado.camada !== 'objetos') {
+      avisar('A estrada vale para Chão e Objetos.', 'ruim');
+      return;
+    }
+    if (!estado.inicioEstrada) {
+      estado.inicioEstrada = tile;
+      avisar('Começo marcado. Clique no fim do trecho (Esc cancela).', 'bom');
+    } else {
+      const caractere = estado.pincel[estado.camada];
+      const raio = Math.floor((estado.tamanhoPincel - 1) / 2);
+      relatar(estado.mundo.estrada(estado.camada, estado.inicioEstrada, tile, caractere, raio));
+      estado.inicioEstrada = tile; // encadeia: o fim vira o novo começo
+    }
     return;
   }
 
@@ -722,6 +805,18 @@ canvas.addEventListener('pointerdown', (evento) => {
 });
 
 canvas.addEventListener('pointermove', (evento) => {
+  // Arrastando a referência: alça de canto reescala/gira, corpo move.
+  if (estado.alcaReferencia) {
+    const m = mundoDoEvento(evento);
+    if (estado.alcaReferencia === 'mover') {
+      referencia.mover(m.x - estado.ancoraMundo.x, m.y - estado.ancoraMundo.y);
+      estado.ancoraMundo = m;
+    } else {
+      referencia.arrastarAlca(estado.alcaReferencia, m.x, m.y);
+    }
+    return;
+  }
+
   if (estado.movendoVista && estado.ancoraArrasto) {
     camera.arrastar(evento.clientX - estado.ancoraArrasto.x, evento.clientY - estado.ancoraArrasto.y);
     estado.ancoraArrasto = { x: evento.clientX, y: evento.clientY };
@@ -743,6 +838,10 @@ canvas.addEventListener('pointerleave', () => {
 });
 
 canvas.addEventListener('pointerup', (evento) => {
+  if (estado.alcaReferencia) {
+    estado.alcaReferencia = null;
+    return;
+  }
   if (estado.inicioArea) concluirArea(tileDoEvento(evento));
   estado.arrastando = false;
   estado.movendoVista = false;
@@ -755,10 +854,15 @@ canvas.addEventListener(
   (evento) => {
     evento.preventDefault();
     const area = canvas.getBoundingClientRect();
+    // O piso do afastamento é o mapa inteiro caber; o teto, aproximar bastante
+    // para mexer tile a tile. Afastar além do mapa só mostraria vazio.
+    const minimo = estado.mundo ? zoomParaCaber(estado.mundo) * 0.9 : 0.02;
     camera.aplicarZoom(
       evento.deltaY < 0 ? 1.12 : 1 / 1.12,
       evento.clientX - area.left,
       evento.clientY - area.top,
+      minimo,
+      4,
     );
     mostrarZoom();
   },
@@ -823,6 +927,71 @@ function montarTrilha() {
     });
     linha.append(mais, menos);
     tamanho.append(linha);
+  }
+
+  montarModoCidade();
+}
+
+/** Materiais de um clique: cada botão escolhe camada Chão, pincel e material. */
+const MATERIAIS_CIDADE = [
+  { rotulo: 'Grama', char: 'g' },
+  { rotulo: 'Estrada', char: 'a' },
+  { rotulo: 'Calçada', char: 'p' },
+  { rotulo: 'Mar', char: '~' },
+];
+
+const TAMANHOS_PINCEL = [1, 3, 7, 15, 25];
+
+/**
+ * Botões do modo cidade: materiais diretos, a marca de prédio e o tamanho do
+ * pincel. Tudo pensado para desenhar grande sem caçar na paleta.
+ */
+function montarModoCidade() {
+  const caixa = el('modo-cidade');
+  caixa.replaceChildren();
+
+  for (const m of MATERIAIS_CIDADE) {
+    const ativo = estado.camada === 'chao' && estado.pincel.chao === m.char && estado.ferramenta === 'pincel';
+    const b = criar('button', `botao${ativo ? ' botao--ativo' : ''}`, m.rotulo);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      estado.camada = 'chao';
+      estado.ferramenta = 'pincel';
+      estado.pincel.chao = m.char;
+      montarTrilha();
+      desenharPaleta();
+    });
+    caixa.append(b);
+  }
+
+  // Marca de prédio: entra na camada Objetos pintando o caractere `M`.
+  const marcaAtiva = estado.camada === 'objetos' && estado.pincel.objetos === 'M';
+  const marca = criar('button', `botao botao--largo${marcaAtiva ? ' botao--ativo' : ''}`, 'Marcar prédio');
+  marca.type = 'button';
+  marca.title = 'Põe um alfinete "aqui vai um prédio". A distribuição das cenas é feita depois.';
+  marca.addEventListener('click', () => {
+    estado.camada = 'objetos';
+    estado.ferramenta = 'pincel';
+    estado.pincel.objetos = 'M';
+    estado.tamanhoPincel = 1; // marca é sempre um tile
+    montarTrilha();
+    desenharPaleta();
+  });
+  caixa.append(marca);
+
+  // Tamanho do pincel.
+  const tam = el('pincel-tamanho');
+  tam.replaceChildren();
+  tam.append(criar('span', 'trilha__rotulo', 'Pincel'));
+  for (const t of TAMANHOS_PINCEL) {
+    const b = criar('button', `botao${estado.tamanhoPincel === t ? ' botao--ativo' : ''}`, String(t));
+    b.type = 'button';
+    b.title = `Pincel de ${t} tile${t > 1 ? 's' : ''} de diâmetro`;
+    b.addEventListener('click', () => {
+      estado.tamanhoPincel = t;
+      montarModoCidade();
+    });
+    tam.append(b);
   }
 }
 
@@ -1101,6 +1270,72 @@ el('sel-cena').addEventListener('change', async (e) => {
   e.target.value = alvo;
 });
 el('btn-enquadrar').addEventListener('click', enquadrar);
+
+// ---------- papel manteiga (referência) ----------
+
+referencia.carregar('/referencia/mapa-ruas.png', () => {
+  atualizarBotoesReferencia();
+});
+
+function atualizarBotoesReferencia() {
+  const mostrar = el('ref-mostrar');
+  mostrar.classList.toggle('botao--ativo', referencia.estado.visivel && referencia.temImagem);
+  mostrar.textContent = referencia.estado.visivel ? 'Referência ✓' : 'Referência';
+  el('ref-ajustar').classList.toggle('botao--ativo', estado.ajustandoReferencia);
+  el('ref-opacidade').value = String(Math.round(referencia.estado.opacidade * 100));
+}
+
+el('ref-mostrar').addEventListener('click', () => {
+  if (!referencia.temImagem) {
+    avisar('A imagem de referência não carregou.', 'ruim');
+    return;
+  }
+  const visivel = referencia.alternar();
+  // Esconder a referência também sai do modo de ajuste, senão o mouse ficaria
+  // mexendo numa imagem invisível.
+  if (!visivel) estado.ajustandoReferencia = false;
+  atualizarBotoesReferencia();
+  avisar(visivel ? 'Referência ligada.' : 'Referência desligada (posição guardada).', 'bom');
+});
+
+el('ref-ajustar').addEventListener('click', () => {
+  if (!referencia.temImagem) return;
+  estado.ajustandoReferencia = !estado.ajustandoReferencia;
+  // Ligar o ajuste força a referência visível, senão não há o que agarrar.
+  if (estado.ajustandoReferencia && !referencia.estado.visivel) referencia.alternar();
+  atualizarBotoesReferencia();
+  avisar(
+    estado.ajustandoReferencia
+      ? 'Ajuste: arraste para mover, puxe um canto para escalar e girar.'
+      : 'Ajuste desligado. Agora o mouse volta a desenhar.',
+    'bom',
+  );
+});
+
+el('ref-opacidade').addEventListener('input', (e) => {
+  referencia.definirOpacidade(Number(e.target.value) / 100);
+});
+
+el('ref-enquadrar').addEventListener('click', () => {
+  if (!referencia.temImagem) return;
+  referencia.enquadrar();
+  if (!referencia.estado.visivel) referencia.alternar();
+  atualizarBotoesReferencia();
+});
+
+el('btn-limpar').addEventListener('click', () => {
+  const mundo = estado.mundo;
+  if (!mundo) return;
+  // Pede confirmação: esvaziar o mapa inteiro é grande, mesmo dando para
+  // desfazer. Um clique sem querer no botão não deve varrer tudo em silêncio.
+  const confirmar = typeof window.confirm === 'function' ? window.confirm : () => true;
+  if (!confirmar(`Esvaziar "${mundo.dados.nome}" inteiro? Dá para desfazer com Z.`)) return;
+  mundo.limparTudo();
+  renderizador.esquecerLosangos();
+  sincronizarTamanho();
+  desenharPaleta();
+  avisar('Mapa esvaziado. Z desfaz.', 'bom');
+});
 el('busca').addEventListener('input', (e) => {
   estado.termo = e.target.value;
   desenharPaleta();
@@ -1265,13 +1500,8 @@ window.addEventListener('keydown', (evento) => {
   const ferramenta = FERRAMENTAS.find((f) => f.tecla === evento.key);
   if (ferramenta) {
     estado.ferramenta = ferramenta.id;
+    if (ferramenta.id !== 'estrada') estado.inicioEstrada = null;
     montarTrilha();
-    return;
-  }
-
-  // O conta-gotas virou o clique direito; a tecla antiga avisa em vez de calar.
-  if (evento.key === '5') {
-    avisar('O conta-gotas agora é o clique direito no mapa.', 'ruim');
     return;
   }
 
@@ -1324,6 +1554,12 @@ window.addEventListener('keydown', (evento) => {
     }
     if (!el('dialogo').hidden) {
       el('dialogo').hidden = true;
+      return;
+    }
+    // Estrada a meio caminho: Esc encerra o encadeamento sem traçar o trecho.
+    if (estado.inicioEstrada) {
+      estado.inicioEstrada = null;
+      avisar('Estrada encerrada.', 'bom');
       return;
     }
     if (estado.camada === 'decoracao' && soltarPeca()) return;
@@ -1407,12 +1643,51 @@ function quadro(agora) {
     // destaque do jogo não desenha nada.
     renderizador.desenhar(jogoFalso, null, null, agora / 1000);
 
+    // Papel manteiga por cima do mapa, se ligado.
+    referencia.desenhar(canvas.getContext('2d'), renderizador.dpr, renderizador.largura, renderizador.altura);
+
     // Prévia da área sendo marcada com retângulo ou prédio.
     if (estado.inicioArea && estado.tileSobMouse) {
       desenharPreviaArea(estado.inicioArea, estado.tileSobMouse);
     }
+
+    // Prévia da estrada: a linha do começo marcado até o cursor.
+    if (estado.ferramenta === 'estrada' && estado.inicioEstrada && estado.tileSobMouse) {
+      desenharPreviaEstrada(estado.inicioEstrada, estado.tileSobMouse);
+    }
   }
   requestAnimationFrame(quadro);
+}
+
+/** Linha fantasma da estrada, do começo marcado ao cursor, na largura do pincel. */
+function desenharPreviaEstrada(a, b) {
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.setTransform(renderizador.dpr, 0, 0, renderizador.dpr, 0, 0);
+  ctx.translate(renderizador.largura / 2, renderizador.altura / 2);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.translate(-camera.x, -camera.y);
+
+  const pa = gradeParaMundo(a.gx, a.gy);
+  const pb = gradeParaMundo(b.gx, b.gy);
+  const raio = Math.floor((estado.tamanhoPincel - 1) / 2);
+
+  // Faixa larga ligando os dois pontos, na espessura aproximada da estrada.
+  ctx.strokeStyle = 'rgba(216, 162, 74, 0.5)';
+  ctx.lineWidth = Math.max(2, (raio * 2 + 1) * (LARGURA_TILE / 2) * 0.5);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pa.x, pa.y);
+  ctx.lineTo(pb.x, pb.y);
+  ctx.stroke();
+
+  // Pontas: diamante no começo e no fim, para ler onde a rua vai nascer/terminar.
+  ctx.fillStyle = 'rgba(240, 200, 126, 0.8)';
+  for (const p of [pa, pb]) {
+    trilhaDiamante(ctx, p.x, p.y, 0.9);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function desenharPreviaArea(a, b) {

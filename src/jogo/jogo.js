@@ -58,8 +58,43 @@ export class Jogo {
     this.encerrado = false;
     this.veredito = null;
 
+    /**
+     * Fase da partida:
+     *  - 'pre-crime'   a cidade vive, ninguém morreu, as pistas ainda não
+     *                  nasceram e nada de investigação funciona;
+     *  - 'investigacao' o crime aconteceu: pistas plantadas, relatórios liberados.
+     *
+     * O jogo nasce em 'investigacao' por padrão, para os testes e as simulações
+     * (que não encenam o pré-crime) seguirem valendo. Quem quer o pré-crime
+     * chama `iniciarPreCrime()` logo após montar.
+     */
+    this.fase = 'investigacao';
+
     /** @type {Map<string, Function[]>} */
     this.ouvintes = new Map();
+  }
+
+  /** Começa na fase de pré-crime: trava a investigação até `dispararCrime()`. */
+  iniciarPreCrime() {
+    this.fase = 'pre-crime';
+    return this;
+  }
+
+  /** O local onde o corpo é encontrado, lido dos documentos fixos do caso. */
+  get cenaDoCorpo() {
+    const doc = (this.caso.documentos ?? []).find((d) => d.alvo === 'corpo');
+    return doc?.cena ?? 'casa-de-campo';
+  }
+
+  /** Liga a investigação: as pistas passam a existir e os relatórios abrem. */
+  dispararCrime() {
+    if (this.fase === 'investigacao') return;
+    this.fase = 'investigacao';
+    this.#avisar('crime', { local: this.cenaDoCorpo });
+  }
+
+  get preCrime() {
+    return this.fase === 'pre-crime';
   }
 
   // ---------- eventos ----------
@@ -83,8 +118,9 @@ export class Jogo {
     return this.recolhidos.length >= this.caso.minimoParaAcusar;
   }
 
-  /** Vestígios ainda no chão do local atual. */
+  /** Vestígios ainda no chão do local atual. Vazio enquanto o crime não aconteceu. */
   vestigiosVisiveis() {
+    if (this.preCrime) return [];
     return this.misterio.vestigios.filter((v) => !v.recolhido && v.cena === this.cenaAtual.id);
   }
 
@@ -235,14 +271,19 @@ export class Jogo {
     if (this.encerrado) return;
     if (this.detetive.distanciaAte(alvo.gx, alvo.gy) > ALCANCE) return;
 
-    if (alvo.tipo === 'vestigio') {
-      this.#recolher(alvo.vestigio);
+    // Passagem funciona em qualquer fase: andar entre locais é livre mesmo antes
+    // do crime. É a primeira checagem para o pré-crime não bloquear o passeio.
+    if (alvo.tipo === 'ligacao') {
+      this.viajarPara(alvo.para, this.cenaAtual.id);
       return;
     }
 
-    // Passagem: entra no prédio ou volta para a rua, sem menu no caminho.
-    if (alvo.tipo === 'ligacao') {
-      this.viajarPara(alvo.para, this.cenaAtual.id);
+    // Antes do crime, nada de investigar: sem pistas, sem relatórios, sem mesa
+    // de acusação. O mundo está apenas vivendo.
+    if (this.preCrime) return;
+
+    if (alvo.tipo === 'vestigio') {
+      this.#recolher(alvo.vestigio);
       return;
     }
 

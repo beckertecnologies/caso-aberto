@@ -11,3 +11,6 @@ dist/
 # modelo do editor no Node. É apagada no fim; só sobra se o teste quebrar.
 tools/.mundo-editavel.gerado.mjs
 tools/.fumaca-editor/
+
+# Cópias de segurança antes de operação destrutiva. Local, nunca commitadas.
+.backup/

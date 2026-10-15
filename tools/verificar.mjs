@@ -12,7 +12,7 @@ import { Progresso, DepositoMemoria } from '../src/jogo/persistencia.js';
 // qualquer prédio criado pelo editor ficava fora da verificação — pior: fazia a
 // checagem de "toda passagem tem volta" acusar um destino inexistente.
 import { CENAS } from '../src/dados/cenas.js';
-import { CASO_014 } from '../src/dados/caso-014.js';
+import { CASO_RUTTERFORT as CASO_014 } from '../src/dados/caso-rutterfort.js';
 
 
 
@@ -783,7 +783,7 @@ secao('Progresso salvo');
     jogo.recolhidos.push(vestigio);
   }
   jogo.documentosLidos.add('boletim');
-  jogo.ouvir('marcela', 'relacao');
+  jogo.ouvir('luca', 'relacao');
   const alvo = jogo.misterio.vestigios[0];
   const perguntaAlvo = CASO_014.suspeitos
     .flatMap((s) => (s.perguntas ?? []).map((p) => ({ s, p })))
@@ -804,7 +804,7 @@ secao('Progresso salvo');
   );
   conferir('local foi restaurado', retomado.cenaAtual.id === jogo.cenaAtual.id);
   conferir('documentos lidos voltaram', retomado.documentosLidos.has('boletim'));
-  conferir('respostas ouvidas voltaram', retomado.jaOuviu('marcela', 'relacao'));
+  conferir('respostas ouvidas voltaram', retomado.jaOuviu('luca', 'relacao'));
   conferir(
     'contradições voltaram',
     retomado.contradicoes.length === jogo.contradicoes.length,

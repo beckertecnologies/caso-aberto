@@ -24,19 +24,31 @@
     <div class="barra__grupo">
       <label class="campo campo--curto">
         <span>Largura</span>
-        <input type="number" id="in-largura" min="8" max="300" step="1">
+        <input type="number" id="in-largura" min="8" max="1000" step="1">
       </label>
       <label class="campo campo--curto">
         <span>Altura</span>
-        <input type="number" id="in-altura" min="8" max="300" step="1">
+        <input type="number" id="in-altura" min="8" max="1000" step="1">
       </label>
       <button type="button" id="btn-tamanho" class="botao">Aplicar</button>
+    </div>
+
+    <!-- Papel manteiga: imagem de referência para calcar o traçado. -->
+    <div class="barra__grupo">
+      <button type="button" id="ref-mostrar" class="botao" title="Liga/desliga a imagem de referência, mantendo a posição">Referência</button>
+      <button type="button" id="ref-ajustar" class="botao" title="Arrastar para mover; puxar um canto para escalar e girar">Ajustar</button>
+      <label class="campo campo--curto" title="Transparência da referência">
+        <span>Opacidade</span>
+        <input type="range" id="ref-opacidade" min="5" max="100" value="50">
+      </label>
+      <button type="button" id="ref-enquadrar" class="botao" title="Recentraliza a referência na tela">Centralizar</button>
     </div>
 
     <div class="barra__grupo barra__grupo--fim">
       <span id="nivel" class="indicador indicador--largo" title="Altura da próxima peça">nível 0</span>
       <span id="zoom" class="indicador">100%</span>
       <button type="button" id="btn-enquadrar" class="botao" title="Enquadra o mapa inteiro">Enquadrar</button>
+      <button type="button" id="btn-limpar" class="botao" title="Esvazia o mapa inteiro (dá para desfazer)">Limpar tudo</button>
       <button type="button" id="btn-validar" class="botao">Validar</button>
       <button type="button" id="btn-salvar" class="botao botao--destaque">Salvar</button>
     </div>
@@ -48,6 +60,15 @@
 
     <h2 class="trilha__titulo">Ferramenta</h2>
     <div id="ferramentas" class="trilha__lista"></div>
+
+    <!--
+      Modo cidade: desenhar grande e rápido. Materiais num clique, pincel grosso
+      e a marca de "aqui vai um prédio". A distribuição das cenas nas marcas é
+      feita depois, por ferramenta de linha de comando.
+    -->
+    <h2 class="trilha__titulo">Modo cidade</h2>
+    <div id="modo-cidade" class="trilha__lista"></div>
+    <div id="pincel-tamanho" class="trilha__lista"></div>
 
     <h2 class="trilha__titulo">Mapa</h2>
     <div id="tamanho" class="trilha__lista"></div>
@@ -101,7 +122,7 @@
     <span class="rodape__ajuda">
       Clique direito é conta-gotas · botão do meio ou <kbd>Shift</kbd> arrastando move a vista ·
       roda dá zoom ·
-      <kbd>1</kbd>–<kbd>5</kbd> trocam ferramenta · <kbd>Tab</kbd> troca camada ·
+      <kbd>1</kbd>–<kbd>6</kbd> trocam ferramenta (<kbd>6</kbd> estrada: clique no início e no fim) · <kbd>Tab</kbd> troca camada ·
       <kbd>R</kbd> gira · <kbd>F</kbd>/<kbd>V</kbd> mudam a altura · <kbd>X</kbd> volta ao nível 0 ·
       <kbd>Esc</kbd> solta a peça e liga a inspeção
     </span>
@@ -142,11 +163,11 @@
       <div class="dialogo__linha">
         <label class="campo campo--curto">
           <span>Largura</span>
-          <input type="number" id="novo-largura" value="26" min="8" max="300">
+          <input type="number" id="novo-largura" value="26" min="8" max="1000">
         </label>
         <label class="campo campo--curto">
           <span>Altura</span>
-          <input type="number" id="novo-altura" value="20" min="8" max="300">
+          <input type="number" id="novo-altura" value="20" min="8" max="1000">
         </label>
         <label class="opcao">
           <input type="checkbox" id="novo-externo">

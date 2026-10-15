@@ -165,7 +165,7 @@ const { OBJETOS, CHAO } = await import('../src/mundo/tiles.js');
 // A lista completa, a mesma que o jogo monta: local criado pelo editor entra
 // aqui sozinho, e a fumaça passa a cobri-lo.
 const { CENAS } = await import('../src/dados/cenas.js');
-const { CASO_014 } = await import('../src/dados/caso-014.js');
+const { CASO_RUTTERFORT: CASO_014 } = await import('../src/dados/caso-rutterfort.js');
 const { VISUAL } = await import('../src/dados/visual.js');
 const { Acervo } = await import('../src/render/acervo.js');
 
@@ -345,22 +345,50 @@ function crescer(dados, colunas, linhas) {
     return alvo?.tipo === 'ligacao' && alvo.para === 'delegacia';
   });
 
+  // Cena mínima com três portas por caractere (1,2,3), para os testes de
+  // passagem não dependerem de quantas saídas a cidade desenhada à mão tem.
+  const cenaComChars = () => ({
+    id: 'teste-passagens',
+    nome: 'Teste',
+    endereco: '-',
+    ligacoes: {
+      1: { para: 'delegacia', rotulo: 'Porta 1' },
+      2: { para: 'escritorio', rotulo: 'Porta 2' },
+      3: { para: 'banco', rotulo: 'Porta 3' },
+    },
+    chao: [
+      'ppppppppp',
+      'ppppppppp',
+      'ppppppppp',
+      'ppppppppp',
+      'ppppppppp',
+    ],
+    objetos: [
+      '#########',
+      '#..X....#',
+      '#.......#',
+      '#1..2..3#',
+      '#########',
+    ],
+  });
+
   conferir('convive com as passagens em caractere', () => {
-    const dados = copia(CENA_CIDADE);
-    dados.passagens = [{ gx: LIVRE.gx, gy: LIVRE.gy, para: 'delegacia' }];
+    const dados = cenaComChars();
+    // Três portas por caractere; a da lista é a quarta.
+    dados.passagens = [{ gx: 4, gy: 2, para: 'hotel-de-luxo' }];
     const cena = new Cena(dados);
-    // A cidade já tem três portas por caractere; a da lista é a quarta.
     return cena.ligacoes.length === 4;
   });
 
   conferir('mais de três passagens é possível', () => {
-    const dados = copia(CENA_CIDADE);
+    const dados = cenaComChars();
+    // Três por caractere + cinco em lista = oito saídas, sem teto.
     dados.passagens = [
-      { gx: 10, gy: 19, para: 'delegacia' },
-      { gx: 11, gy: 19, para: 'apto-302' },
-      { gx: 12, gy: 19, para: 'escritorio' },
-      { gx: 13, gy: 19, para: 'delegacia' },
-      { gx: 14, gy: 19, para: 'apto-302' },
+      { gx: 2, gy: 2, para: 'delegacia' },
+      { gx: 3, gy: 2, para: 'cartorio' },
+      { gx: 4, gy: 2, para: 'escritorio' },
+      { gx: 5, gy: 2, para: 'tribunal' },
+      { gx: 6, gy: 2, para: 'banco' },
     ];
     return new Cena(dados).ligacoes.length === 8;
   });

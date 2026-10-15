@@ -39,7 +39,7 @@ export class Camera {
    * (telaX, telaY). Sem essa âncora, aproximar jogaria a vista para longe de
    * onde o cursor está.
    */
-  aplicarZoom(fator, telaX, telaY, minimo = 0.25, maximo = 4) {
+  aplicarZoom(fator, telaX, telaY, minimo = 0.02, maximo = 4) {
     const antes = this.telaParaMundo(telaX, telaY);
     this.zoom = Math.max(minimo, Math.min(maximo, this.zoom * fator));
     const depois = this.telaParaMundo(telaX, telaY);

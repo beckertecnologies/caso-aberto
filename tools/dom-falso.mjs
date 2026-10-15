@@ -35,12 +35,21 @@ export function contexto2d() {
     },
   };
 
+  // Teto do histórico. Sem ele, desenhar uma cidade de centenas de milhares de
+  // tiles por vários quadros empilha milhões de registros e estoura a heap — foi
+  // o que derrubou a fumaça do editor. Guardar só as últimas N chamadas basta:
+  // as checagens olham o quadro recém-desenhado, não o histórico inteiro.
+  const TETO = 20000;
   const anotadas = new Map();
   return new Proxy(base, {
     get(obj, prop) {
       if (prop in obj) return obj[prop];
       if (!anotadas.has(prop)) {
         anotadas.set(prop, (...args) => {
+          // Descarta a metade mais antiga de uma vez quando estoura o teto —
+          // mais barato que `shift()` a cada chamada, e as checagens só olham o
+          // fim recente de qualquer jeito.
+          if (chamadas.length >= TETO) chamadas.splice(0, TETO / 2);
           chamadas.push({ metodo: String(prop), args });
         });
       }

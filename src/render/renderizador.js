@@ -62,6 +62,47 @@ export class Renderizador {
     /** O editor desenha o mundo sem o personagem nem a rota dele. */
     this.mostrarDetetive = true;
     /**
+     * Modo do minimapa, em ciclo pela tecla M:
+     *  - 'canto'     mapinha no canto, ~20% do mapa ao redor do detetive;
+     *  - 'expandido' o mapa inteiro, numa caixa grande centralizada;
+     *  - 'oculto'    nada.
+     *
+     * Fica oculto por padrão (o editor não quer o enfeite) e o jogo começa em
+     * 'canto' por `main.js`. Em qualquer modo mostra o chão amostrado, as saídas,
+     * os vestígios já visíveis e onde o detetive está — para dar noção tanto do
+     * que há por perto quanto de onde se está no mapa como um todo.
+     */
+    this.modoMinimapa = 'oculto';
+    /** Fração do maior lado do mapa que o minimapa de canto enquadra (0.2 = ~20%). */
+    this.fracaoMinimapa = 0.2;
+    /**
+     * A multidão da cidade, ligada pelo jogo em `main.js`. Quando presente e a
+     * cena atual é a cidade dela, os NPCs entram na fila de desenho. O editor
+     * nunca liga, então fica nulo lá.
+     * @type {import('../jogo/povo.js').Povo|null}
+     */
+    this.povo = null;
+    /**
+     * Id da cena do crime. Quando definido, o minimapa destaca em vermelho a
+     * passagem que leva até lá — a seta de "o corpo está aqui". Ligado pelo jogo
+     * quando o crime dispara; nulo antes disso e no editor.
+     * @type {string|null}
+     */
+    this.localDoCrime = null;
+    /**
+     * Posição de tela do ponteiro, ligada pelo jogo. O mapa grande usa para
+     * mostrar a legenda do lugar sob o mouse. Nulo quando o mouse está fora.
+     * @type {{x:number,y:number}|null}
+     */
+    this.ponteiro = null;
+    /**
+     * Chão do mapa grande já pintado numa imagem, para não repintar os ~380 mil
+     * tiles da cidade a cada quadro — era isso que travava com o mapa aberto. A
+     * imagem é refeita só quando a cena ou o tamanho da caixa muda.
+     * @type {{chave:string, lona:HTMLCanvasElement}|null}
+     */
+    this.mapaCacheChao = null;
+    /**
      * Fantasma da peça que está prestes a ser colocada, ligado pelo editor.
      *
      * Sem isto, pôr uma parede era tentativa e erro: você clicava, via onde a
@@ -148,6 +189,312 @@ export class Renderizador {
     if (this.mostrarLuz) {
       this.#desenharLuz(cena, detetive, this.camera.mundoParaTela(0, 0));
     }
+
+    // Minimapa por cima de tudo, em coordenadas de tela (ignora câmera e zoom).
+    if (this.mostrarDetetive && this.modoMinimapa !== 'oculto') {
+      if (this.modoMinimapa === 'expandido') this.#desenharMapaExpandido(jogo, tempo);
+      else this.#desenharMinimapa(jogo);
+    }
+  }
+
+  /**
+   * Minimapa no canto superior direito.
+   *
+   * Enquadra uma janela quadrada de `fracaoMinimapa` do maior lado do mapa,
+   * centrada no detetive, e pinta cada tile dela como um quadradinho da cor do
+   * material. Por cima, marca as saídas (azul), os vestígios já visíveis
+   * (âmbar) e o detetive (ponto claro no centro). Tudo em espaço de tela, então
+   * não sofre com o zoom nem com a projeção isométrica — é um mapa de planta
+   * baixa, de leitura rápida, não uma segunda vista isométrica.
+   */
+  #desenharMinimapa(jogo) {
+    const cena = jogo.cenaAtual;
+    const detetive = jogo.detetive;
+
+    // Caixa quadrada no canto inferior direito.
+    const lado = Math.round(Math.max(140, Math.min(220, this.largura * 0.18)));
+    const margem = 16;
+    const caixa = { x: this.largura - lado - margem, y: this.altura - lado - margem, largura: lado, altura: lado };
+
+    // Janela do mundo (em tiles) que o minimapa cobre, centrada no detetive.
+    const alcance = Math.max(6, Math.round((Math.max(cena.largura, cena.altura) * this.fracaoMinimapa) / 2));
+    const janela = {
+      gxMin: Math.round(detetive.gx) - alcance,
+      gyMin: Math.round(detetive.gy) - alcance,
+      tilesX: alcance * 2 + 1,
+      tilesY: alcance * 2 + 1,
+    };
+
+    this.#pintarMapa(jogo, caixa, janela, {
+      rotulo: cena.nome ?? '',
+      rotuloAcima: true, // no rodapé da tela, o nome vai acima da caixa
+    });
+  }
+
+  /**
+   * Mapa inteiro, numa caixa grande centralizada — para situar onde se está no
+   * mundo como um todo (em cima, embaixo, perto do porto...). Mesmo desenho do
+   * minimapa, só que a janela é o mapa todo e a caixa respeita a proporção dele.
+   */
+  #desenharMapaExpandido(jogo, tempo) {
+    const ctx = this.ctx;
+    const cena = jogo.cenaAtual;
+
+    // Véu escuro por trás, para destacar o mapa e segurar o olho nele.
+    ctx.save();
+    ctx.fillStyle = 'rgba(4, 6, 10, 0.45)';
+    ctx.fillRect(0, 0, this.largura, this.altura);
+    ctx.restore();
+
+    // A caixa ocupa um bom pedaço da tela, mantendo a proporção do mapa.
+    const dispX = this.largura * 0.7;
+    const dispY = this.altura * 0.7;
+    const escala = Math.min(dispX / cena.largura, dispY / cena.altura);
+    const largura = Math.round(cena.largura * escala);
+    const altura = Math.round(cena.altura * escala);
+    const caixa = {
+      x: Math.round((this.largura - largura) / 2),
+      y: Math.round((this.altura - altura) / 2),
+      largura,
+      altura,
+    };
+    const janela = { gxMin: 0, gyMin: 0, tilesX: cena.largura, tilesY: cena.altura };
+
+    this.#pintarMapa(jogo, caixa, janela, {
+      rotulo: cena.nome ?? '',
+      rotuloAcima: true,
+      pulsarDetetive: tempo,
+      legenda: 'M: reduzir',
+      hover: true,
+      chaoPronto: this.#chaoDoMapaGrande(cena, largura, altura),
+    });
+  }
+
+  /**
+   * Chão do mapa grande, pintado uma vez numa imagem e reaproveitado nos quadros
+   * seguintes. Pintar os ~380 mil tiles da cidade a cada quadro era o que
+   * travava com o mapa aberto; aqui o custo acontece só uma vez por abertura (ou
+   * quando a caixa muda de tamanho, numa troca de resolução de janela).
+   */
+  #chaoDoMapaGrande(cena, largura, altura) {
+    const chave = `${cena.id}:${largura}x${altura}:${this.dpr}`;
+    if (this.mapaCacheChao?.chave === chave) return this.mapaCacheChao.lona;
+
+    const lona = document.createElement('canvas');
+    lona.width = Math.max(1, Math.round(largura * this.dpr));
+    lona.height = Math.max(1, Math.round(altura * this.dpr));
+    const ctx = lona.getContext('2d');
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+    const escalaX = largura / cena.largura;
+    const escalaY = altura / cena.altura;
+    const larguraCelula = Math.ceil(escalaX) + 0.5;
+    const alturaCelula = Math.ceil(escalaY) + 0.5;
+
+    for (let gy = 0; gy < cena.altura; gy += 1) {
+      const linha = cena.chao[gy];
+      for (let gx = 0; gx < cena.largura; gx += 1) {
+        const terreno = linha[gx];
+        if (!terreno) continue;
+        ctx.fillStyle = terreno.base ?? (terreno.andavel ? '#3a3e45' : '#142a3d');
+        ctx.fillRect(gx * escalaX, gy * escalaY, larguraCelula, alturaCelula);
+      }
+    }
+
+    this.mapaCacheChao = { chave, lona };
+    return lona;
+  }
+
+  /**
+   * Desenho compartilhado do mapa (canto e expandido).
+   *
+   * `caixa` é o retângulo de tela; `janela` é o pedaço do mundo em tiles que
+   * entra nele. Pinta o chão amostrado tile a tile, depois as saídas (azul), os
+   * vestígios visíveis (âmbar) e o detetive (ponto claro). Em espaço de tela,
+   * então ignora câmera, zoom e a projeção isométrica — é planta baixa.
+   */
+  #pintarMapa(jogo, caixa, janela, opcoes = {}) {
+    const ctx = this.ctx;
+    const cena = jogo.cenaAtual;
+    const detetive = jogo.detetive;
+    const { x, y, largura, altura } = caixa;
+    const { gxMin, gyMin, tilesX, tilesY } = janela;
+    const escalaX = largura / tilesX;
+    const escalaY = altura / tilesY;
+    const raioPonto = Math.max(2, Math.min(escalaX, escalaY) * 0.5);
+
+    ctx.save();
+
+    // Moldura e fundo.
+    ctx.fillStyle = 'rgba(8, 11, 17, 0.85)';
+    ctx.strokeStyle = 'rgba(216, 162, 74, 0.55)';
+    ctx.lineWidth = 2;
+    this.#caixaArredondada(ctx, x - 4, y - 4, largura + 8, altura + 8, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    // Recorta na caixa, para nada vazar.
+    ctx.save();
+    this.#caixaArredondada(ctx, x, y, largura, altura, 5);
+    ctx.clip();
+
+    // Chão. No mapa grande vem pronto numa imagem (um só drawImage); no mapinha
+    // de canto, que amostra poucos tiles, é pintado tile a tile na hora.
+    if (opcoes.chaoPronto) {
+      ctx.drawImage(opcoes.chaoPronto, x, y, largura, altura);
+    } else {
+      const larguraCelula = Math.ceil(escalaX) + 0.5;
+      const alturaCelula = Math.ceil(escalaY) + 0.5;
+      for (let i = 0; i < tilesX; i += 1) {
+        for (let j = 0; j < tilesY; j += 1) {
+          const gx = gxMin + i;
+          const gy = gyMin + j;
+          if (!cena.dentro(gx, gy)) continue;
+          const terreno = cena.chao[gy][gx];
+          if (!terreno) continue;
+          ctx.fillStyle = terreno.base ?? (terreno.andavel ? '#3a3e45' : '#142a3d');
+          ctx.fillRect(x + i * escalaX, y + j * escalaY, larguraCelula, alturaCelula);
+        }
+      }
+    }
+
+    // Converte um tile da janela para o centro da célula na tela.
+    const paraTela = (gx, gy) => ({
+      px: x + (gx - gxMin + 0.5) * escalaX,
+      py: y + (gy - gyMin + 0.5) * escalaY,
+    });
+    const dentroJanela = (gx, gy) =>
+      gx >= gxMin && gx < gxMin + tilesX && gy >= gyMin && gy < gyMin + tilesY;
+
+    // Saídas do local (passagens): pontos azuis. A que leva à cena do crime
+    // (quando houver) fica vermelha e pulsando — a seta de "o corpo está aqui".
+    const pulsoCrime = 0.6 + Math.sin(performance.now() / 300) * 0.4;
+    // No mapa grande, acha a saída sob o mouse para mostrar a legenda do lugar.
+    const hover = opcoes.hover ? this.ponteiro : null;
+    let legendaHover = null;
+    const raioAlvo = Math.max(6, raioPonto * 2);
+    for (const passagem of cena.ligacoes) {
+      if (!cena.dentro(passagem.gx, passagem.gy) || !dentroJanela(passagem.gx, passagem.gy)) continue;
+      const { px, py } = paraTela(passagem.gx, passagem.gy);
+      const ehCrime = this.localDoCrime && passagem.para === this.localDoCrime;
+      if (ehCrime) {
+        ctx.fillStyle = `rgba(228, 72, 62, ${0.55 + pulsoCrime * 0.4})`;
+        ctx.beginPath();
+        ctx.arc(px, py, raioPonto * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 150, 140, 0.95)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgba(126, 200, 240, 0.95)';
+        ctx.beginPath();
+        ctx.arc(px, py, raioPonto * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Hit-test do mouse: o mais próximo dentro do raio vira a legenda.
+      if (hover && Math.hypot(hover.x - px, hover.y - py) <= raioAlvo) {
+        const alvo = jogo.cenas.get(passagem.para);
+        legendaHover = {
+          px,
+          py,
+          texto: passagem.rotulo || alvo?.nome || passagem.para,
+          nome: alvo?.nome ?? passagem.para,
+          crime: ehCrime,
+        };
+      }
+    }
+
+    // Vestígios já no chão (os que o jogo mostra): pontos âmbar.
+    for (const vestigio of jogo.vestigiosVisiveis()) {
+      if (!dentroJanela(vestigio.gx, vestigio.gy)) continue;
+      const { px, py } = paraTela(vestigio.gx, vestigio.gy);
+      ctx.fillStyle = 'rgba(240, 200, 126, 0.95)';
+      ctx.beginPath();
+      ctx.arc(px, py, raioPonto * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Detetive: ponto claro com halo. No mapa expandido, pulsa para achar logo.
+    const eu = paraTela(Math.round(detetive.gx), Math.round(detetive.gy));
+    if (opcoes.pulsarDetetive != null) {
+      const pulso = 6 + Math.sin(opcoes.pulsarDetetive * 4) * 3;
+      const halo = ctx.createRadialGradient(eu.px, eu.py, 1, eu.px, eu.py, raioPonto + pulso);
+      halo.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+      halo.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(eu.px, eu.py, raioPonto + pulso, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+    ctx.beginPath();
+    ctx.arc(eu.px, eu.py, Math.max(2.5, raioPonto), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.restore(); // tira o clip
+
+    // Rótulo do local.
+    if (opcoes.rotulo) {
+      ctx.fillStyle = 'rgba(232, 227, 215, 0.85)';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(opcoes.rotulo, x, opcoes.rotuloAcima ? y - 8 : y + altura + 13);
+    }
+
+    // Legenda de ajuda (só no mapa expandido).
+    if (opcoes.legenda) {
+      ctx.fillStyle = 'rgba(232, 227, 215, 0.6)';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(opcoes.legenda, x + largura, y - 8);
+    }
+
+    // Legenda do lugar sob o mouse (fora do recorte, para não ser cortada).
+    if (legendaHover) {
+      const texto = legendaHover.crime ? `${legendaHover.nome} — cena do crime` : legendaHover.nome;
+      ctx.font = 'bold 12px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      const larguraCaixa = ctx.measureText(texto).width + 14;
+      const alturaCaixa = 20;
+      // Posiciona acima do ponto, sem sair da tela.
+      let cx = legendaHover.px + 10;
+      let cy = legendaHover.py - 12;
+      if (cx + larguraCaixa > this.largura) cx = this.largura - larguraCaixa - 4;
+      if (cy - alturaCaixa < 0) cy = legendaHover.py + alturaCaixa + 6;
+      ctx.fillStyle = 'rgba(8, 12, 18, 0.92)';
+      this.#caixaArredondada(ctx, cx, cy - alturaCaixa, larguraCaixa, alturaCaixa, 4);
+      ctx.fill();
+      ctx.strokeStyle = legendaHover.crime ? 'rgba(255, 120, 108, 0.9)' : 'rgba(216, 162, 74, 0.7)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = legendaHover.crime ? '#ff9d92' : '#e8e3d7';
+      ctx.fillText(texto, cx + 7, cy - 6);
+      // Realça o ponto sob o mouse.
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(legendaHover.px, legendaHover.py, raioAlvo, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  /** Caminho de retângulo com cantos arredondados, para a moldura do minimapa. */
+  #caixaArredondada(ctx, x, y, largura, altura, raio) {
+    const r = Math.min(raio, largura / 2, altura / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + largura, y, x + largura, y + altura, r);
+    ctx.arcTo(x + largura, y + altura, x, y + altura, r);
+    ctx.arcTo(x, y + altura, x, y, r);
+    ctx.arcTo(x, y, x + largura, y, r);
+    ctx.closePath();
   }
 
   // ---------- chão ----------
@@ -168,24 +515,69 @@ export class Renderizador {
     const ctx = this.ctx;
     const faixa = this.#faixaVisivel(cena);
 
-    for (let gy = faixa.y0; gy <= faixa.y1; gy += 1) {
-      for (let gx = faixa.x0; gx <= faixa.x1; gx += 1) {
-        const terreno = cena.chao[gy][gx];
-        if (!terreno) continue;
-        const losango = this.#losangoDe(terreno, gx, gy);
-        if (!losango) continue;
-        const { x, y } = gradeParaMundo(gx, gy);
-        ctx.drawImage(
-          losango,
-          x - MEIA_LARGURA - 1,
-          y - MEIA_ALTURA - 1,
-          LARGURA_TILE + 2,
-          ALTURA_TILE + 2,
-        );
+    // Muito afastado, cada tile vira um ponto de menos de um pixel, e desenhar
+    // um `drawImage` por tile torra o quadro à toa — era isto que travava a
+    // ilha vista de longe. Acima de certo afastamento, o chão é pintado como
+    // blocos chapados de cor média, amostrando um tile a cada `passo`. De perto
+    // (o jeito de sempre), nada muda: `passo` é 1 e cada losango é desenhado.
+    // O passo faz cada amostra cobrir ~16px na tela: afastou, menos amostras.
+    // Antes o alvo era 6px, o que ainda deixava dezenas de milhares de blocos
+    // numa ilha vista de longe. 16px mantém a amostragem na casa dos milhares,
+    // onde o quadro é fluido, sem buraco visível no chão.
+    const tileNaTela = LARGURA_TILE * this.camera.zoom;
+    const passo = tileNaTela >= 10 ? 1 : Math.max(1, Math.ceil(16 / Math.max(0.001, tileNaTela)));
+
+    if (passo === 1) {
+      for (let gy = faixa.y0; gy <= faixa.y1; gy += 1) {
+        for (let gx = faixa.x0; gx <= faixa.x1; gx += 1) {
+          const terreno = cena.chao[gy][gx];
+          if (!terreno) continue;
+          const losango = this.#losangoDe(terreno, gx, gy);
+          if (!losango) continue;
+          const { x, y } = gradeParaMundo(gx, gy);
+          ctx.drawImage(
+            losango,
+            x - MEIA_LARGURA - 1,
+            y - MEIA_ALTURA - 1,
+            LARGURA_TILE + 2,
+            ALTURA_TILE + 2,
+          );
+        }
       }
+      this.#desenharFronteiras(ctx, cena, faixa);
+      return;
     }
 
-    this.#desenharFronteiras(ctx, cena, faixa);
+    this.#desenharChaoDistante(cena, faixa, passo);
+  }
+
+  /**
+   * Chão visto de longe: um retângulo chapado por amostra, sem losango nem
+   * costura.
+   *
+   * O custo cai de "um drawImage por tile" para "um fillRect por amostra", e
+   * `passo` cresce com o afastamento, então o número de amostras fica mais ou
+   * menos constante por quadro, não importa o tamanho do mapa. É o que mantém a
+   * ilha inteira fluida.
+   */
+  #desenharChaoDistante(cena, faixa, passo) {
+    const ctx = this.ctx;
+    // Quadrado e não losango: a essa distância a diferença não se vê, e um
+    // `fillRect` por amostra é muito mais barato que montar e preencher um path
+    // de quatro lados. O lado cobre a amostra inteira com uma folga pequena,
+    // para os blocos encostarem sem deixar listra de fundo entre eles.
+    const lado = LARGURA_TILE * passo * 0.72;
+    const meio = lado / 2;
+
+    for (let gy = faixa.y0; gy <= faixa.y1; gy += passo) {
+      for (let gx = faixa.x0; gx <= faixa.x1; gx += passo) {
+        const terreno = cena.chao[gy][gx];
+        if (!terreno) continue;
+        const { x, y } = gradeParaMundo(gx, gy);
+        ctx.fillStyle = terreno.base ?? terreno.claro ?? '#3a3e45';
+        ctx.fillRect(x - meio, y - meio, lado, lado);
+      }
+    }
   }
 
   /** Intervalo de tiles que pode aparecer na janela, com folga nas bordas. */
@@ -400,12 +792,22 @@ export class Renderizador {
     const detetive = jogo.detetive;
     const fila = [];
 
+    // Só o que cai na janela entra na fila. Numa cidade com milhares de peças,
+    // montar e ordenar a fila inteira a cada quadro pesava tanto quanto desenhar
+    // — e a imensa maioria estava fora da tela. A folga é generosa porque peça
+    // alta (um telhado no nível 2) assenta vários tiles acima do próprio tile.
+    const faixa = this.#faixaVisivel(cena);
+    const vis = (gx, gy) =>
+      gx >= faixa.x0 - 2 && gx <= faixa.x1 + 2 && gy >= faixa.y0 - 6 && gy <= faixa.y1 + 2;
+
     for (const peca of cena.pecas) {
+      if (!vis(peca.gx, peca.gy)) continue;
       fila.push({ ordem: profundidade(peca.gx, peca.gy), desenhar: () => this.#desenharPeca(peca, alvoDestacado, tempo) });
     }
 
     // Passagens em lista não estão na matriz, então não entram por `cena.pecas`.
     for (const passagem of cena.passagens) {
+      if (!vis(passagem.gx, passagem.gy)) continue;
       fila.push({
         ordem: profundidade(passagem.gx, passagem.gy) + 0.04,
         desenhar: () => {
@@ -418,6 +820,7 @@ export class Renderizador {
     }
 
     for (const decoracao of cena.decoracoes) {
+      if (!vis(decoracao.gx, decoracao.gy)) continue;
       fila.push({
         // O nível entra na ordem para a peça de cima cobrir a de baixo na mesma
         // coluna. O peso é pequeno de propósito: a profundidade da grade manda,
@@ -440,6 +843,13 @@ export class Renderizador {
         desenhar: () =>
           this.#desenharMarcador(cena.inicio, 'inicio', cena.andavel(cena.inicio.gx, cena.inicio.gy)),
       });
+      for (const marca of cena.marcasPredio) {
+        if (!vis(marca.gx, marca.gy)) continue;
+        fila.push({
+          ordem: profundidade(marca.gx, marca.gy) + 0.055,
+          desenhar: () => this.#desenharMarcador(marca, 'predio', true),
+        });
+      }
     }
 
     if (this.previa) {
@@ -472,6 +882,18 @@ export class Renderizador {
         ordem: profundidade(vestigio.gx, vestigio.gy) + 0.1,
         desenhar: () => this.#desenharVestigio(vestigio, alvoDestacado, tempo),
       });
+    }
+
+    // Multidão: entra na mesma fila por profundidade, para o povo passar atrás
+    // e na frente dos prédios certo. Só a cena que tem povo (a cidade) desenha.
+    if (this.povo && this.povo.cidade === cena) {
+      for (const npc of this.povo.npcs) {
+        if (npc.dentro) continue; // dentro de um prédio: invisível até sair
+        if (!vis(npc.gx, npc.gy)) continue;
+        // Corpo caído fica no chão (ordem baixa); quem anda, na profundidade normal.
+        const ordem = profundidade(npc.gx, npc.gy) + (npc.morto ? 0.02 : 0.18);
+        fila.push({ ordem, desenhar: () => this.#desenharNpc(npc, tempo) });
+      }
     }
 
     if (this.mostrarDetetive) {
@@ -677,11 +1099,13 @@ export class Renderizador {
   #desenharMarcador(ponto, tipo, livre) {
     const ctx = this.ctx;
     const { x, y } = gradeParaMundo(ponto.gx, ponto.gy);
-    const cor = livre
-      ? tipo === 'inicio'
-        ? 'rgba(126, 200, 240, 0.95)'
-        : 'rgba(216, 162, 74, 0.95)'
-      : 'rgba(228, 96, 86, 0.95)';
+    const corPorTipo = {
+      inicio: 'rgba(126, 200, 240, 0.95)',
+      vestigio: 'rgba(216, 162, 74, 0.95)',
+      predio: 'rgba(150, 230, 150, 0.95)',
+    };
+    const letra = { inicio: 'X', vestigio: '*', predio: 'P' }[tipo] ?? '?';
+    const cor = livre ? corPorTipo[tipo] ?? 'rgba(216,162,74,0.95)' : 'rgba(228, 96, 86, 0.95)';
 
     ctx.save();
     trilhaDiamante(ctx, x, y, 0.62);
@@ -697,7 +1121,7 @@ export class Renderizador {
     ctx.font = 'bold 15px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(tipo === 'inicio' ? 'X' : '*', x, y + (tipo === 'inicio' ? 0 : 2));
+    ctx.fillText(letra, x, y + (tipo === 'inicio' ? 0 : 2));
     ctx.restore();
   }
 
@@ -934,22 +1358,88 @@ export class Renderizador {
     ctx.restore();
   }
 
-  /** Marcação de giz no chão. Forma abstrata, sem representar o corpo. */
+  /**
+   * A cena do crime: a vítima caída, uma poça de sangue e o giz da perícia por
+   * cima. A poça e o corpo dão a leitura imediata de "há um corpo aqui"; o giz,
+   * de que a perícia já passou.
+   */
   #contorno(x, y, destacada, tempo) {
     const ctx = this.ctx;
     ctx.save();
     ctx.translate(x, y);
-    ctx.strokeStyle = destacada ? 'rgba(240, 220, 200, 0.95)' : 'rgba(226, 214, 198, 0.62)';
+
+    // Poça de sangue.
+    ctx.fillStyle = 'rgba(90, 10, 12, 0.65)';
+    ctx.beginPath();
+    ctx.ellipse(4, 5, 28, 15, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(140, 18, 20, 0.5)';
+    ctx.beginPath();
+    ctx.ellipse(-12, 1, 11, 6, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Corpo deitado (a vítima). Roupão vinho, como diz o laudo do caso.
+    this.#figuraDeitada(0, 0, {
+      roupa: '#5a2130',
+      calca: '#3a2028',
+      pele: '#cdac8c',
+      cabelo: '#b8b2a6',
+    });
+
+    // Marcação de giz por cima.
+    ctx.strokeStyle = destacada ? 'rgba(240, 220, 200, 0.95)' : 'rgba(226, 214, 198, 0.6)';
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 5]);
     ctx.beginPath();
-    ctx.ellipse(0, 0, 24, 13, 0.35, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 26, 14, 0.3, 0, Math.PI * 2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.ellipse(-16, -6, 8, 5, 0.35, 0, Math.PI * 2);
+    ctx.ellipse(-18, -5, 8, 5, 0.3, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.setLineDash([]);
     ctx.restore();
     if (destacada) this.#aroDestaque(x, y, tempo);
+  }
+
+  /**
+   * Bonequinho deitado (morto), centrado na origem do contexto atual. Usado
+   * tanto pelo contorno da cena do crime quanto pelo corpo de um NPC.
+   */
+  #figuraDeitada(cx, cy, paleta) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Tronco deitado.
+    ctx.fillStyle = paleta.roupa ?? '#5a2130';
+    ctx.beginPath();
+    ctx.ellipse(0, -2, 15, 7, 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    // Pernas.
+    ctx.fillStyle = paleta.calca ?? '#3a2028';
+    ctx.beginPath();
+    ctx.ellipse(13, 1, 9, 4.5, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    // Braço largado.
+    ctx.strokeStyle = paleta.roupa ?? '#5a2130';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-2, -3);
+    ctx.lineTo(6, -12);
+    ctx.stroke();
+    // Cabeça.
+    ctx.fillStyle = paleta.pele ?? '#cdac8c';
+    ctx.beginPath();
+    ctx.arc(-16, -5, 5.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Cabelo.
+    ctx.fillStyle = paleta.cabelo ?? '#b8b2a6';
+    ctx.beginPath();
+    ctx.arc(-17, -6.5, 5.2, Math.PI * 0.55, Math.PI * 1.85);
+    ctx.fill();
+
+    ctx.restore();
   }
 
   #pasta(x, y, destacada, tempo) {
@@ -1364,6 +1854,138 @@ export class Renderizador {
     ctx.fill();
 
     ctx.restore();
+  }
+
+  /**
+   * Transeunte procedural, com paleta sorteada. Mesma linguagem visual do
+   * detetive, mas mais baixo e sem o sobretudo marcante — para o detetive
+   * continuar sendo o único de chapéu-coco e casaco longo. Quando `npc.morto`,
+   * desenha o corpo caído com uma poça de sangue no lugar da figura em pé.
+   */
+  #desenharNpc(npc, tempo) {
+    const ctx = this.ctx;
+    const { x, y } = gradeParaMundo(npc.gx, npc.gy);
+
+    if (npc.morto) {
+      this.#desenharCorpoCaido(x, y, npc, tempo);
+      return;
+    }
+
+    const p = npc.paleta;
+    const esc = p.altura ?? 1;
+    const passo = npc.andando ? Math.sin(npc.fase) : 0;
+    const balanco = npc.andando ? Math.abs(Math.sin(npc.fase)) * 1.6 : 0;
+    const paraEsquerda = npc.olhandoX < 0;
+
+    // Sombra
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = '#04060a';
+    ctx.beginPath();
+    ctx.ellipse(x, y, 11, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(x, y - balanco);
+    ctx.scale(esc, esc);
+    if (paraEsquerda) ctx.scale(-1, 1);
+
+    // Pernas (calça)
+    ctx.strokeStyle = p.calca;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-1, -12);
+    ctx.lineTo(-3 + passo * 4, -1);
+    ctx.moveTo(1, -12);
+    ctx.lineTo(3 - passo * 4, -1);
+    ctx.stroke();
+
+    // Tronco (roupa)
+    ctx.fillStyle = p.roupa;
+    ctx.beginPath();
+    ctx.moveTo(-6, -13);
+    ctx.lineTo(-5, -32);
+    ctx.lineTo(5, -32);
+    ctx.lineTo(6, -13);
+    ctx.quadraticCurveTo(0, -10, -6, -13);
+    ctx.closePath();
+    ctx.fill();
+
+    // Braço
+    ctx.strokeStyle = p.roupa;
+    ctx.lineWidth = 3.4;
+    ctx.beginPath();
+    ctx.moveTo(4, -30);
+    ctx.lineTo(6 + passo * 2, -18);
+    ctx.stroke();
+
+    // Cabeça (pele)
+    ctx.fillStyle = p.pele;
+    ctx.beginPath();
+    ctx.arc(0, -36, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cabelo
+    ctx.fillStyle = p.cabelo;
+    ctx.beginPath();
+    ctx.arc(0, -37.5, 5, Math.PI, Math.PI * 2);
+    ctx.fill();
+
+    // Chapéu, se tiver
+    if (p.chapeu) {
+      ctx.fillStyle = p.chapeu;
+      ctx.beginPath();
+      ctx.ellipse(0, -40, 8, 2.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(0, -42, 5, 3.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    // Rótulo flutuante só para personagens (suspeitos / vítima), discreto.
+    if (npc.papel === 'personagem' && npc.nome) {
+      this.#etiquetaNpc(x, y - 48 * esc, npc.nome);
+    }
+  }
+
+  /** Nome pequeno acima de um personagem, para o jogador reconhecer quem é. */
+  #etiquetaNpc(x, y, texto) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    const largura = ctx.measureText(texto).width + 8;
+    ctx.fillStyle = 'rgba(8, 12, 18, 0.7)';
+    ctx.fillRect(x - largura / 2, y - 11, largura, 13);
+    ctx.fillStyle = 'rgba(226, 214, 198, 0.9)';
+    ctx.fillText(texto, x, y - 1);
+    ctx.restore();
+  }
+
+  /** Corpo caído de um NPC com poça de sangue — reusa a figura deitada. */
+  #desenharCorpoCaido(x, y, npc, tempo) {
+    const ctx = this.ctx;
+    const brilho = 0.5 + Math.sin(tempo * 2) * 0.06;
+
+    ctx.save();
+    ctx.translate(x, y);
+    // Poça de sangue.
+    ctx.fillStyle = 'rgba(96, 10, 12, 0.72)';
+    ctx.beginPath();
+    ctx.ellipse(2, 3, 22, 12, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(150, 20, 22, ${brilho})`;
+    ctx.beginPath();
+    ctx.ellipse(-3, 1, 11, 6, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    this.#figuraDeitada(x, y, npc.paleta ?? {});
   }
 
   // ---------- luz e clima ----------

@@ -226,6 +226,24 @@ html, body {
 
 .trilha__titulo:first-child { margin-top: 0; }
 .trilha__lista { display: flex; flex-direction: column; gap: 5px; }
+
+/* Modo cidade e tamanho do pincel: botões curtos em linha, que quebram. */
+#modo-cidade,
+#pincel-tamanho {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.trilha__rotulo {
+  width: 100%;
+  font-size: 0.64rem;
+  color: var(--tinta-fraca);
+}
+#modo-cidade .botao,
+#pincel-tamanho .botao { flex: 1 1 auto; justify-content: center; min-width: 40px; }
+#modo-cidade .botao--largo { flex-basis: 100%; }
 .trilha__lista--grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 
 /* ---------- acervo à direita ---------- */

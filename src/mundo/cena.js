@@ -33,6 +33,8 @@ export class Cena {
     this.pecas = [];
     /** Tiles onde o gerador pode plantar um vestígio. */
     this.pontosDeVestigio = [];
+    /** Marcas de "aqui vai um prédio", postas no modo cidade do editor. */
+    this.marcasPredio = [];
     /** Mapa "gx,gy" -> objeto examinável. */
     this.interativos = new Map();
     /** Passagens para outros locais. */
@@ -106,6 +108,7 @@ export class Cena {
 
         if (def.marcador === 'vestigio') this.pontosDeVestigio.push({ gx, gy });
         if (def.marcador === 'inicio') this.inicio = { gx, gy };
+        if (def.marcador === 'predio') this.marcasPredio.push({ gx, gy });
         if (def.forma) this.pecas.push({ gx, gy, def });
         if (def.luz) this.luzes.push({ gx, gy, raio: def.luz });
 

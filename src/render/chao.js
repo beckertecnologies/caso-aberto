@@ -203,7 +203,37 @@ function liso(ctx, x, y, gx, gy, t) {
   preencher(ctx, x, y, t.base);
 }
 
-const PINTORES = { asfalto, calcada, grama, tabua, ladrilho, tapete, concreto, liso };
+/**
+ * Água: azul em camadas, com faixas claras onde a onda pega luz. Sem animação
+ * — o chão é pré-pintado uma vez por tile —, mas a variação por posição faz o
+ * mar não ficar um bloco chapado.
+ */
+function agua(ctx, x, y, gx, gy, t) {
+  preencher(ctx, x, y, t.base);
+  // Duas camadas de tom, escolhidas pela posição, dão profundidade.
+  const fundo = ruido(gx, gy, 71);
+  preencher(ctx, x, y, fundo > 0.5 ? t.escuro : t.base, 0.4);
+
+  // Riscos horizontais claros = reflexo na crista da onda.
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = t.claro;
+  for (let i = 0; i < 3; i += 1) {
+    const r = ruido(gx, gy, 120 + i);
+    if (r < 0.45) continue;
+    const ly = y + (ruido(gx, gy, 160 + i) - 0.5) * ALTURA_TILE * 0.7;
+    const lx = x + (ruido(gx, gy, 200 + i) - 0.5) * LARGURA_TILE * 0.4;
+    ctx.fillRect(lx - 5, ly, 10, 1);
+  }
+  // Um brilho de espuma pontual, bem esparso.
+  if (ruido(gx, gy, 260) > 0.82) {
+    ctx.globalAlpha = 0.65;
+    ctx.fillStyle = t.espuma ?? t.claro;
+    ctx.fillRect(x + (ruido(gx, gy, 280) - 0.5) * 12, y + (ruido(gx, gy, 300) - 0.5) * 8, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
+const PINTORES = { asfalto, calcada, grama, tabua, ladrilho, tapete, concreto, agua, liso };
 
 /** Pinta uma tile de chão, recortada no próprio losango. */
 export function pintarChao(ctx, terreno, x, y, gx, gy) {

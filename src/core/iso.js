@@ -23,6 +23,18 @@ export const ALTURA_NIVEL = 16;
 /** Níveis aceitos. O teto existe só para um número digitado errado não sumir com a peça. */
 export const NIVEL_MAXIMO = 40;
 
+/**
+ * Maior lado de mapa que o editor aceita.
+ *
+ * Não é limite técnico: o renderizador só desenha os tiles visíveis e guarda um
+ * losango por material, então o custo por quadro é o tamanho da janela, não o do
+ * mundo. O teto existe para um número digitado errado não criar um mapa de
+ * milhões de tiles sem querer. 1000x1000 são ~2 MB nas matrizes de texto, longe
+ * de ser problema. O que incomoda antes da memória é a travessia a pé: a 3,4
+ * tiles/s, mil tiles levam quase cinco minutos.
+ */
+export const LADO_MAXIMO = 1000;
+
 /** Garante que um nível vindo de arquivo ou de interface é inteiro e cabe. */
 export function nivelValido(valor) {
   const n = Math.floor(Number(valor) || 0);

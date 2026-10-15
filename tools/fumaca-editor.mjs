@@ -87,6 +87,12 @@ async function prepararModulos() {
     join(RAIZ, 'editor', 'nucleo', 'categorias.js'),
     join(TEMPORARIA, 'nucleo', 'categorias.js'),
   );
+  // `referencia.js` não tem import de código (só tipo em JSDoc), então vai como
+  // está.
+  await cp(
+    join(RAIZ, 'editor', 'nucleo', 'referencia.js'),
+    join(TEMPORARIA, 'nucleo', 'referencia.js'),
+  );
 }
 
 // ---------- servidor de mentira ----------
@@ -98,6 +104,24 @@ const { gradeParaMundo } = await import('../src/core/iso.js');
 /** O que o app enviou, para os testes conferirem sem nada ir a disco. */
 const enviados = [];
 
+// Uma cidade PEQUENA para o teste. A de produção tem centenas de milhares de
+// tiles, e este teste exercita a interface do editor — escolher peça, girar,
+// pintar, salvar —, não o desempenho com mapa gigante (isso é o benchmark).
+// Desenhar a cidade real a cada quadro aqui só torrava tempo e memória.
+const CIDADE_TESTE = {
+  id: 'cidade',
+  nome: 'Cidade',
+  endereco: 'Ilha',
+  externo: true,
+  ligacoes: {},
+  decoracoes: [],
+  passagens: [{ gx: 10, gy: 10, para: 'prefeitura', rotulo: 'Entrar: Prefeitura' }],
+  chao: Array.from({ length: 24 }, () => 'p'.repeat(32)),
+  objetos: Array.from({ length: 24 }, (_, y) =>
+    y === 12 ? `${'.'.repeat(16)}X${'.'.repeat(15)}` : '.'.repeat(32),
+  ),
+};
+
 function instalarFetch() {
   globalThis.fetch = async (url, opcoes = {}) => {
     const rota = String(url);
@@ -108,23 +132,26 @@ function instalarFetch() {
       json: async () => corpo,
     });
 
+    // A cidade entra pela versão pequena; as demais cenas são os esqueletos.
+    const resumo = (d) => ({
+      id: d.id,
+      nome: d.nome,
+      endereco: d.endereco,
+      arquivo: `cena-${d.id}.js`,
+      externo: Boolean(d.externo),
+      largura: d.chao[0].length,
+      altura: d.chao.length,
+      pecas: (d.decoracoes ?? []).length,
+    });
+
     if (rota === '/api/cenas') {
-      return responder(
-        CENAS.map((d) => ({
-          id: d.id,
-          nome: d.nome,
-          endereco: d.endereco,
-          arquivo: `cena-${d.id}.js`,
-          externo: Boolean(d.externo),
-          largura: d.chao[0].length,
-          altura: d.chao.length,
-          pecas: (d.decoracoes ?? []).length,
-        })),
-      );
+      const lista = CENAS.map((d) => (d.id === 'cidade' ? resumo(CIDADE_TESTE) : resumo(d)));
+      return responder(lista);
     }
 
     const uma = rota.match(/^\/api\/cena\/([a-z0-9-]+)$/);
     if (uma && metodo === 'GET') {
+      if (uma[1] === 'cidade') return responder(JSON.parse(JSON.stringify(CIDADE_TESTE)));
       const dados = CENAS.find((d) => d.id === uma[1]);
       if (!dados) return responder({ erro: 'não achei' }, false);
       return responder(JSON.parse(JSON.stringify(dados)));
@@ -147,7 +174,9 @@ console.log('Teste de fumaça do editor (DOM mínimo, caminho real)');
 await prepararModulos();
 instalarFetch();
 
-const dom = montarDom(new URL('../editor/index.html', import.meta.url));
+// `comImagem` liga o `Image` falso, para a referência (papel manteiga) carregar
+// e ser exercitada como no navegador.
+const dom = montarDom(new URL('../editor/index.html', import.meta.url), { comImagem: true });
 const { porId, dispararNaJanela, rodarQuadros } = dom;
 const palco = porId.get('palco');
 
@@ -517,7 +546,9 @@ conferir('o nível das peças sobrevive à volta pelo servidor', () => {
 
 conferir('trocar de local pelo seletor não quebra', () => {
   const seletor = porId.get('sel-cena');
-  seletor.value = 'apto-302';
+  // Um local que existe de fato na lista atual (apto-302 foi aposentado).
+  const outro = CENAS.find((c) => c.id !== 'cidade');
+  seletor.value = outro.id;
   seletor.disparar('change', { target: seletor });
   rodarQuadros(3);
   return true;
